@@ -1,6 +1,6 @@
 ﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Naruto Tactics", "Naruto Tactics.csproj", "{40A1510E-64F5-4961-8425-C0D07AD745B6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Project Tactics", "Project Tactics.csproj", "{40A1510E-64F5-4961-8425-C0D07AD745B6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

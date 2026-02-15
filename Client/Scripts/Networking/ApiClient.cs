@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
-namespace NarutoRP.Networking;
+namespace ProjectTactics.Networking;
 
 /// <summary>
 /// HTTP client for communicating with the Flask backend.
@@ -230,12 +230,12 @@ public partial class ApiClient : Node
     }
 
     /// <summary>Create a new character.</summary>
-    public async Task<ApiResponse> CreateCharacter(string name, string village, string bio, int slot)
+    public async Task<ApiResponse> CreateCharacter(string name, string city, string bio, int slot)
     {
         return await RequestAsync("POST", "/characters/", new
         {
             name,
-            village,
+            city,
             bio,
             slot,
         });

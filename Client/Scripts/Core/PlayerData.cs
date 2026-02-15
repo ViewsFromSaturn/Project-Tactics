@@ -3,22 +3,22 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace NarutoRP.Core;
+namespace ProjectTactics.Core;
 
 /// <summary>
 /// Core player data class. Holds the 6 training stats, derives all combat stats,
-/// and manages character identity (name, clan, village, rank).
+/// and manages character identity (name, faction, city, rank).
 /// Attach this as a resource or hold it in a PlayerController node.
 /// </summary>
 [GlobalClass]
 public partial class PlayerData : Resource
 {
     // ─── IDENTITY ───────────────────────────────────────────────
-    [Export] public string CharacterName { get; set; } = "New Ninja";
-    [Export] public string ClanName { get; set; } = "Clanless";
-    [Export] public string Village { get; set; } = "Leaf";
+    [Export] public string CharacterName { get; set; } = "New Character";
+    [Export] public string RaceName { get; set; } = "Human";
+    [Export] public string City { get; set; } = "Lumere";
     [Export] public string Allegiance { get; set; } = "None";
-    [Export] public string RpRank { get; set; } = "Academy Student"; // Pure RP, not stat-based
+    [Export] public string RpRank { get; set; } = "Aspirant"; // Pure RP, not stat-based
 
     // ─── BIO & PLAY-BY ─────────────────────────────────────────
     [Export] public string Bio { get; set; } = "";           // Character backstory (500 char max)
@@ -30,7 +30,7 @@ public partial class PlayerData : Resource
     [Export] public int Agility { get; set; } = 1;
     [Export] public int Endurance { get; set; } = 1;
     [Export] public int Stamina { get; set; } = 1;
-    [Export] public int ChakraControl { get; set; } = 1;
+    [Export] public int EtherControl { get; set; } = 1;
 
     // ─── DAILY TRAINING TRACKING ────────────────────────────────
     [Export] public int DailyPointsRemaining { get; set; } = 5;
@@ -38,44 +38,44 @@ public partial class PlayerData : Resource
 
     // ─── CURRENT COMBAT STATE ───────────────────────────────────
     [Export] public int CurrentHp { get; set; } = -1;   // -1 = uninitialized, set to max on first load
-    [Export] public int CurrentChakra { get; set; } = -1;
+    [Export] public int CurrentEther { get; set; } = -1;
 
-    // ─── CLAN PASSIVE MODIFIERS (set by ClanData) ───────────────
-    [Export] public float ClanHpModifier { get; set; } = 1.0f;
-    [Export] public float ClanChakraModifier { get; set; } = 1.0f;
-    [Export] public float ClanAtkModifier { get; set; } = 1.0f;
-    [Export] public float ClanJatkModifier { get; set; } = 1.0f;
-    [Export] public float ClanAvdModifier { get; set; } = 1.0f;
-    [Export] public float ClanRegenModifier { get; set; } = 1.0f;
+    // ─── FACTION PASSIVE MODIFIERS (set by RaceData) ─────────
+    [Export] public float RaceHpModifier { get; set; } = 1.0f;
+    [Export] public float RaceEtherModifier { get; set; } = 1.0f;
+    [Export] public float RaceAtkModifier { get; set; } = 1.0f;
+    [Export] public float RaceEatkModifier { get; set; } = 1.0f;
+    [Export] public float RaceAvdModifier { get; set; } = 1.0f;
+    [Export] public float RaceRegenModifier { get; set; } = 1.0f;
 
     // ═════════════════════════════════════════════════════════════
     //  CHARACTER LEVEL
     //  Average of all 6 training stats, rounded down.
     // ═════════════════════════════════════════════════════════════
     public int CharacterLevel =>
-        (Strength + Speed + Agility + Endurance + Stamina + ChakraControl) / 6;
+        (Strength + Speed + Agility + Endurance + Stamina + EtherControl) / 6;
 
     // ═════════════════════════════════════════════════════════════
     //  DERIVED COMBAT STATS
-    //  Auto-calculated from training stats + clan modifiers.
+    //  Auto-calculated from training stats + race modifiers.
     // ═════════════════════════════════════════════════════════════
 
-    // --- Health & Chakra ---
-    public int MaxHp => (int)((200 + (Endurance * 15) + (Stamina * 8)) * ClanHpModifier);
-    public int MaxChakra => (int)((100 + (ChakraControl * 20) + (Stamina * 5)) * ClanChakraModifier);
-    public int ChakraRegen => (int)(ChakraControl * 0.8f * ClanRegenModifier);
+    // --- Health & Ether ---
+    public int MaxHp => (int)((200 + (Endurance * 15) + (Stamina * 8)) * RaceHpModifier);
+    public int MaxEther => (int)((100 + (EtherControl * 20) + (Stamina * 5)) * RaceEtherModifier);
+    public int EtherRegen => (int)(EtherControl * 0.8f * RaceRegenModifier);
 
     // --- Offense ---
-    public int Atk => (int)((Strength * 2.5f + Speed * 0.5f) * ClanAtkModifier);
-    public int Jatk => (int)((ChakraControl * 2.5f + Agility * 0.3f) * ClanJatkModifier);
+    public int Atk => (int)((Strength * 2.5f + Speed * 0.5f) * RaceAtkModifier);
+    public int Eatk => (int)((EtherControl * 2.5f + Agility * 0.3f) * RaceEatkModifier);
     public int CritPercent => (int)(Speed * 0.3f + Agility * 0.2f);
 
     // --- Defense ---
     public int Def => (int)(Endurance * 2.0f + Stamina * 0.5f);
-    public int Jdef => (int)(ChakraControl * 1.0f + Endurance * 1.0f);
+    public int Edef => (int)(EtherControl * 1.0f + Endurance * 1.0f);
 
     // --- Evasion & Accuracy ---
-    public int Avd => (int)((Agility * 1.5f + Speed * 1.0f) * ClanAvdModifier);
+    public int Avd => (int)((Agility * 1.5f + Speed * 1.0f) * RaceAvdModifier);
     public int Acc => (int)(Agility * 1.0f + Speed * 0.5f);
 
     // --- Movement ---
@@ -105,9 +105,9 @@ public partial class PlayerData : Resource
     }
 
     /// <summary>
-    /// Calculate dodge chance vs a jutsu attack.
+    /// Calculate dodge chance vs an ether ability.
     /// </summary>
-    public float CalcJutsuDodge(int attackerInt, int terrainBonus = 0, bool isAoe = false)
+    public float CalcEtherDodge(int attackerInt, int terrainBonus = 0, bool isAoe = false)
     {
         float dodge = (Avd * 0.3f) + (Agility * 0.2f) - (attackerInt * 0.3f)
                       + terrainBonus;
@@ -132,12 +132,12 @@ public partial class PlayerData : Resource
     }
 
     /// <summary>
-    /// Calculate jutsu damage taken. Caps at 60% of max HP.
+    /// Calculate ether ability damage taken. Caps at 60% of max HP.
     /// </summary>
-    public int CalcJutsuDamage(int attackerJatk, int jutsuPower = 0, float elementBonus = 1.0f)
+    public int CalcEtherDamage(int attackerEatk, int abilityPower = 0, float elementBonus = 1.0f)
     {
-        int raw = (int)((attackerJatk * 1.5f + jutsuPower) * elementBonus);
-        int defense = (int)(Jdef * 0.8f);
+        int raw = (int)((attackerEatk * 1.5f + abilityPower) * elementBonus);
+        int defense = (int)(Edef * 0.8f);
         int damage = Math.Max(raw - defense, 1);
         int maxDamage = (int)(MaxHp * 0.6f);
         return Math.Min(damage, maxDamage);
@@ -148,12 +148,12 @@ public partial class PlayerData : Resource
     // ═════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Call once when a character is first loaded or created to set current HP/Chakra.
+    /// Call once when a character is first loaded or created to set current HP/Ether.
     /// </summary>
     public void InitializeCombatState()
     {
         if (CurrentHp < 0) CurrentHp = MaxHp;
-        if (CurrentChakra < 0) CurrentChakra = MaxChakra;
+        if (CurrentEther < 0) CurrentEther = MaxEther;
     }
 
     /// <summary>
@@ -162,7 +162,7 @@ public partial class PlayerData : Resource
     public void RefreshDerivedStats()
     {
         CurrentHp = Math.Min(CurrentHp, MaxHp);
-        CurrentChakra = Math.Min(CurrentChakra, MaxChakra);
+        CurrentEther = Math.Min(CurrentEther, MaxEther);
     }
 
     // ═════════════════════════════════════════════════════════════
@@ -176,15 +176,15 @@ public partial class PlayerData : Resource
         "agility" or "agi"  => Agility,
         "endurance" or "end" => Endurance,
         "stamina" or "sta"  => Stamina,
-        "chakracontrol" or "ckc" => ChakraControl,
+        "ethercontrol" or "etc" => EtherControl,
         _ => 0
     };
 
     public int LowestTrainingStat =>
-        new[] { Strength, Speed, Agility, Endurance, Stamina, ChakraControl }.Min();
+        new[] { Strength, Speed, Agility, Endurance, Stamina, EtherControl }.Min();
 
     public int HighestTrainingStat =>
-        new[] { Strength, Speed, Agility, Endurance, Stamina, ChakraControl }.Max();
+        new[] { Strength, Speed, Agility, Endurance, Stamina, EtherControl }.Max();
 
     public Dictionary<string, int> GetAllTrainingStats() => new()
     {
@@ -193,18 +193,18 @@ public partial class PlayerData : Resource
         { "Agility", Agility },
         { "Endurance", Endurance },
         { "Stamina", Stamina },
-        { "ChakraControl", ChakraControl }
+        { "EtherControl", EtherControl }
     };
 
     public Dictionary<string, int> GetAllDerivedStats() => new()
     {
         { "HP", MaxHp },
-        { "Chakra", MaxChakra },
-        { "ChakraRegen", ChakraRegen },
+        { "Ether", MaxEther },
+        { "EtherRegen", EtherRegen },
         { "ATK", Atk },
         { "DEF", Def },
-        { "JATK", Jatk },
-        { "JDEF", Jdef },
+        { "EATK", Eatk },
+        { "EDEF", Edef },
         { "AVD", Avd },
         { "ACC", Acc },
         { "CRIT%", CritPercent },

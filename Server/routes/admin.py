@@ -10,8 +10,8 @@ from routes.auth import require_admin
 
 admin_bp = Blueprint("admin", __name__)
 
-VALID_RANKS = ["Academy Student", "Genin", "Chunin", "Jonin", "Kage"]
-VALID_STATS = ["strength", "speed", "agility", "endurance", "stamina", "chakra_control"]
+VALID_RANKS = ["Aspirant", "Sworn", "Warden", "Banneret", "Justicar"]
+VALID_STATS = ["strength", "speed", "agility", "endurance", "stamina", "ether_control"]
 
 
 @admin_bp.route("/accounts", methods=["GET"])

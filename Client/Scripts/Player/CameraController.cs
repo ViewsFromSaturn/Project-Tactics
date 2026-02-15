@@ -1,6 +1,6 @@
 using Godot;
 
-namespace NarutoRP.Player;
+namespace ProjectTactics.Player;
 
 /// <summary>
 /// Smooth follow camera for the overworld.

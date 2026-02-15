@@ -1,7 +1,7 @@
 using Godot;
 using System;
 
-namespace NarutoRP.Player;
+namespace ProjectTactics.Player;
 
 /// <summary>
 /// Player controller for overworld movement.

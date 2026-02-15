@@ -81,10 +81,10 @@ F5 → Title Screen
 ```
 Step 1: Enter Name (2-30 characters)
     ↓
-Step 2: Choose Village
-    - Konohagakure (The Village Hidden in the Leaves)
-    - Sunagakure (The Village Hidden in the Sand)
-    - Kirigakure (The Village Hidden in the Mist)
+Step 2: Choose Starting City
+    - Lumere (The City of Light — Capital of the Empire)
+    - Praeven (The City Before the Fall — Twin Seat of the Empire)
+    - Caldris (The Free City — Outside the Empire)
     ↓
 Step 3: Write Bio (optional, 500 char max) + Upload Play-By Image (optional)
     ↓
@@ -96,7 +96,7 @@ CREATE → Auto-saves to slot → Loads into Overworld
 - All UI is built dynamically in code — no need to add child nodes manually
 - The scenes are just a single Control root with the script attached
 - Orange (#E87722) accent color theme throughout
-- Dark background (#1a1a2e) for the Naruto aesthetic
+- Dark background (#1a1a2e) for the game aesthetic
 - Saves go to `user://saves/slot1.tres`, `slot2.tres`, `slot3.tres`
 - You can delete your old TestBootstrap node from the Overworld scene
   since characters now enter through the proper creation flow

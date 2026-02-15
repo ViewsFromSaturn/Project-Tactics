@@ -1,5 +1,5 @@
 """
-Naruto Tactics - Flask Backend
+Project Tactics - Flask Backend
 REST API for authentication, character CRUD, and game data.
 """
 import os
@@ -21,7 +21,7 @@ def create_app():
     # ─── CONFIGURATION ───────────────────────────────────────
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-        "DATABASE_URL", "postgresql://naruto:naruto@localhost:5432/naruto_tactics"
+        "DATABASE_URL", "postgresql://tactics:tactics@localhost:5432/project_tactics"
     )
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB max upload
@@ -38,7 +38,7 @@ def create_app():
     # ─── HEALTH CHECK ────────────────────────────────────────
     @app.route("/api/health")
     def health():
-        return {"status": "ok", "game": "Naruto Tactics", "version": "1.0"}
+        return {"status": "ok", "game": "Project Tactics", "version": "1.0"}
 
     # ─── CREATE TABLES ───────────────────────────────────────
     with app.app_context():

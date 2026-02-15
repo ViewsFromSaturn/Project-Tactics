@@ -1,4 +1,4 @@
-# Naruto RP — Godot 4.x C# Setup Guide
+# Project Tactics — Godot 4.x C# Setup Guide
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@
 ## Step 1: Create the Godot Project
 
 1. Open Godot → **New Project**
-2. Name: `NarutoRP`
+2. Name: `ProjectTactics`
 3. Renderer: **Forward+** (or **Compatibility** if targeting lower-end PCs)
 4. Create the project
 
@@ -27,7 +27,7 @@ In the Godot FileSystem panel, create these folders:
 ```
 res://
 ├── Scripts/
-│   ├── Core/         ← Copy GameManager.cs, PlayerData.cs, ClanData.cs here
+│   ├── Core/         ← Copy GameManager.cs, PlayerData.cs, RaceData.cs here
 │   ├── Player/       ← Copy PlayerController.cs, CameraController.cs here
 │   ├── Systems/      ← Copy DailyTraining.cs here
 │   ├── UI/           ← Copy DebugOverlay.cs here
@@ -186,7 +186,7 @@ Create this temporary script:
 
 ```csharp
 using Godot;
-using NarutoRP.Core;
+using ProjectTactics.Core;
 
 /// <summary>
 /// Temporary bootstrap for testing. Creates a test character on startup.
@@ -222,11 +222,12 @@ public partial class TestBootstrap : Node
         }
 
         // Create a fresh test character
-        var data = gm.CreateNewCharacter(
-            name: "Naruto Uzumaki",
-            clan: "Uzumaki",
-            village: "Leaf"
-        );
+        var data = new PlayerData
+        {
+            CharacterName = "Test Character",
+            RaceName = "Human",
+            City = "Lumere"
+        };
 
         // Give some starting stats for testing
         data.Strength = 10;
@@ -234,14 +235,14 @@ public partial class TestBootstrap : Node
         data.Agility = 11;
         data.Endurance = 8;
         data.Stamina = 9;
-        data.ChakraControl = 7;
+        data.EtherControl = 7;
         data.DailyPointsRemaining = 5;
 
-        // Apply clan passives and refresh
-        ClanData.ApplyClanPassives(data);
+        // Apply race passives and refresh
+        RaceData.ApplyRacePassives(data);
         data.InitializeCombatState();
 
-        gm.LoadCharacter(data);
+        gm.LoadCharacter(data, "test");
         gm.SetState(GameManager.GameState.InWorld);
 
         GD.Print("[TestBootstrap] Created test character.");
@@ -297,7 +298,7 @@ Overworld (Node2D)
 - [ ] Derived stats (HP, ATK, etc.) change when training stats change
 - [ ] F3 saves without errors in Output
 - [ ] F4 loads and restores saved stats
-- [ ] Clan passives are applied (Uzumaki should show boosted HP/Chakra)
+- [ ] Race passives are applied (check derived stat multipliers)
 - [ ] Camera follows the player smoothly
 - [ ] Mouse wheel zooms in/out
 
@@ -312,7 +313,7 @@ Once this is working, the next steps are:
 3. **Daily Training UI** — Proper allocation screen (not debug keys)
 4. **Chat System** — Say, Whisper, OOC, Emote verbs
 5. **Multiplayer** — Godot networking for seeing other players
-6. **Map Design** — Real tilesets, village layouts
+6. **Map Design** — Real tilesets, city layouts
 
 ---
 
@@ -337,6 +338,6 @@ Once this is working, the next steps are:
 ### Save/Load doesn't work
 - Check Output panel for path errors
 - Saves go to `user://saves/` which is:
-  - Windows: `%AppData%/Godot/app_userdata/NarutoRP/saves/`
-  - Mac: `~/Library/Application Support/Godot/app_userdata/NarutoRP/saves/`
-  - Linux: `~/.local/share/godot/app_userdata/NarutoRP/saves/`
+  - Windows: `%AppData%/Godot/app_userdata/ProjectTactics/saves/`
+  - Mac: `~/Library/Application Support/Godot/app_userdata/ProjectTactics/saves/`
+  - Linux: `~/.local/share/godot/app_userdata/ProjectTactics/saves/`

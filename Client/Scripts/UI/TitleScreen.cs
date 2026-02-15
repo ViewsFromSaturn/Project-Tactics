@@ -1,7 +1,7 @@
 using Godot;
 using System;
 
-namespace NarutoRP.UI;
+namespace ProjectTactics.UI;
 
 /// <summary>
 /// Title Screen with Login / Register forms.
@@ -55,7 +55,7 @@ public partial class TitleScreen : Control
         _titlePanel.AddThemeConstantOverride("separation", 12);
         AddChild(_titlePanel);
 
-        var title = CreateLabel("NARUTO TACTICS", 42, "E87722");
+        var title = CreateLabel("PROJECT TACTICS", 42, "E87722");
         title.HorizontalAlignment = HorizontalAlignment.Center;
         _titlePanel.AddChild(title);
 

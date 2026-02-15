@@ -1,6 +1,6 @@
 using Godot;
 
-namespace NarutoRP.UI;
+namespace ProjectTactics.UI;
 
 /// <summary>
 /// Debug HUD overlay for testing.
@@ -36,20 +36,20 @@ public partial class DebugOverlay : Control
 
 		_statsLabel.Text =
 $@"═══ {p.CharacterName} ═══
-Clan: {p.ClanName} | Village: {p.Village}
+Race: {p.RaceName} | City: {p.City}
 Rank: {p.RpRank} | Char Lv: {p.CharacterLevel}
 Daily Pts: {p.DailyPointsRemaining}
 
 ── TRAINING STATS ──
 STR: {p.Strength}  SPD: {p.Speed}  AGI: {p.Agility}
-END: {p.Endurance}  STA: {p.Stamina}  CKC: {p.ChakraControl}
+END: {p.Endurance}  STA: {p.Stamina}  ETC: {p.EtherControl}
 
 ── DERIVED STATS ──
-HP:  {p.CurrentHp}/{p.MaxHp}   CKR: {p.CurrentChakra}/{p.MaxChakra}
-ATK: {p.Atk}  DEF: {p.Def}  JATK: {p.Jatk}  JDEF: {p.Jdef}
+HP:  {p.CurrentHp}/{p.MaxHp}   ETR: {p.CurrentEther}/{p.MaxEther}
+ATK: {p.Atk}  DEF: {p.Def}  EATK: {p.Eatk}  EDEF: {p.Edef}
 AVD: {p.Avd}  ACC: {p.Acc}  CRIT: {p.CritPercent}%
 MOVE: {p.Move}  JUMP: {p.Jump}  RT: {p.BaseRt}
-Regen: {p.ChakraRegen}/turn
+Regen: {p.EtherRegen}/turn
 
 ── CONTROLS ──
 WASD/Arrows: Move | Shift: Run

@@ -1,7 +1,7 @@
 using Godot;
 using System;
 
-namespace NarutoRP.Systems;
+namespace ProjectTactics.Systems;
 
 /// <summary>
 /// Manages daily stat point allocation.
@@ -35,7 +35,7 @@ public partial class DailyTraining : Node
     private float _agilityBank = 0f;
     private float _enduranceBank = 0f;
     private float _staminaBank = 0f;
-    private float _chakraControlBank = 0f;
+    private float _etherControlBank = 0f;
 
     // ═════════════════════════════════════════════════════════════
     //  DAILY POINTS CALCULATION
@@ -211,7 +211,7 @@ public partial class DailyTraining : Node
             case "agility" or "agi":        data.Agility += amount; break;
             case "endurance" or "end":      data.Endurance += amount; break;
             case "stamina" or "sta":        data.Stamina += amount; break;
-            case "chakracontrol" or "ckc":  data.ChakraControl += amount; break;
+            case "ethercontrol" or "etc":   data.EtherControl += amount; break;
         }
     }
 
@@ -224,7 +224,7 @@ public partial class DailyTraining : Node
             case "agility" or "agi":        return ref _agilityBank;
             case "endurance" or "end":      return ref _enduranceBank;
             case "stamina" or "sta":        return ref _staminaBank;
-            case "chakracontrol" or "ckc":  return ref _chakraControlBank;
+            case "ethercontrol" or "etc":   return ref _etherControlBank;
             default:                        return ref _strengthBank;
         }
     }

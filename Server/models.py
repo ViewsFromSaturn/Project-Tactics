@@ -1,5 +1,5 @@
 """
-Database models for Naruto Tactics.
+Database models for Project Tactics.
 """
 import uuid
 from datetime import datetime, timezone
@@ -57,10 +57,10 @@ class Character(db.Model):
 
     # ─── IDENTITY ────────────────────────────────────────────
     name = db.Column(db.String(30), unique=True, nullable=False, index=True)
-    clan = db.Column(db.String(30), default="Clanless")
-    village = db.Column(db.String(30), nullable=False)
+    race = db.Column(db.String(30), default="Human")
+    city = db.Column(db.String(30), nullable=False)
     allegiance = db.Column(db.String(30), default="None")
-    rp_rank = db.Column(db.String(30), default="Academy Student")
+    rp_rank = db.Column(db.String(30), default="Aspirant")
     bio = db.Column(db.String(500), default="")
     play_by_path = db.Column(db.String(256), default="")
 
@@ -70,7 +70,7 @@ class Character(db.Model):
     agility = db.Column(db.Integer, default=1)
     endurance = db.Column(db.Integer, default=1)
     stamina = db.Column(db.Integer, default=1)
-    chakra_control = db.Column(db.Integer, default=1)
+    ether_control = db.Column(db.Integer, default=1)
 
     # ─── DAILY TRAINING ──────────────────────────────────────
     daily_points_remaining = db.Column(db.Integer, default=5)
@@ -78,15 +78,15 @@ class Character(db.Model):
 
     # ─── CURRENT COMBAT STATE ────────────────────────────────
     current_hp = db.Column(db.Integer, default=-1)
-    current_chakra = db.Column(db.Integer, default=-1)
+    current_ether = db.Column(db.Integer, default=-1)
 
-    # ─── CLAN MODIFIERS ──────────────────────────────────────
-    clan_hp_mod = db.Column(db.Float, default=1.0)
-    clan_chakra_mod = db.Column(db.Float, default=1.0)
-    clan_atk_mod = db.Column(db.Float, default=1.0)
-    clan_jatk_mod = db.Column(db.Float, default=1.0)
-    clan_avd_mod = db.Column(db.Float, default=1.0)
-    clan_regen_mod = db.Column(db.Float, default=1.0)
+    # ─── RACE MODIFIERS ──────────────────────────────────────
+    race_hp_mod = db.Column(db.Float, default=1.0)
+    race_ether_mod = db.Column(db.Float, default=1.0)
+    race_atk_mod = db.Column(db.Float, default=1.0)
+    race_eatk_mod = db.Column(db.Float, default=1.0)
+    race_avd_mod = db.Column(db.Float, default=1.0)
+    race_regen_mod = db.Column(db.Float, default=1.0)
 
     # ─── TIMESTAMPS ──────────────────────────────────────────
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -108,39 +108,39 @@ class Character(db.Model):
     @property
     def character_level(self):
         return (self.strength + self.speed + self.agility +
-                self.endurance + self.stamina + self.chakra_control) // 6
+                self.endurance + self.stamina + self.ether_control) // 6
 
     @property
     def max_hp(self):
-        return int((200 + self.endurance * 15 + self.stamina * 8) * self.clan_hp_mod)
+        return int((200 + self.endurance * 15 + self.stamina * 8) * self.race_hp_mod)
 
     @property
-    def max_chakra(self):
-        return int((100 + self.chakra_control * 20 + self.stamina * 5) * self.clan_chakra_mod)
+    def max_ether(self):
+        return int((100 + self.ether_control * 20 + self.stamina * 5) * self.race_ether_mod)
 
     @property
-    def chakra_regen(self):
-        return int(self.chakra_control * 0.8 * self.clan_regen_mod)
+    def ether_regen(self):
+        return int(self.ether_control * 0.8 * self.race_regen_mod)
 
     @property
     def atk(self):
-        return int((self.strength * 2.5 + self.speed * 0.5) * self.clan_atk_mod)
+        return int((self.strength * 2.5 + self.speed * 0.5) * self.race_atk_mod)
 
     @property
     def defense(self):
         return int(self.endurance * 2.0 + self.stamina * 0.5)
 
     @property
-    def jatk(self):
-        return int((self.chakra_control * 2.5 + self.agility * 0.3) * self.clan_jatk_mod)
+    def eatk(self):
+        return int((self.ether_control * 2.5 + self.agility * 0.3) * self.race_eatk_mod)
 
     @property
-    def jdef(self):
-        return int(self.chakra_control * 1.0 + self.endurance * 1.0)
+    def edef(self):
+        return int(self.ether_control * 1.0 + self.endurance * 1.0)
 
     @property
     def avd(self):
-        return int((self.agility * 1.5 + self.speed * 1.0) * self.clan_avd_mod)
+        return int((self.agility * 1.5 + self.speed * 1.0) * self.race_avd_mod)
 
     @property
     def acc(self):
@@ -170,8 +170,8 @@ class Character(db.Model):
             "slot": self.slot,
             # Identity
             "name": self.name,
-            "clan": self.clan,
-            "village": self.village,
+            "race": self.race,
+            "city": self.city,
             "allegiance": self.allegiance,
             "rp_rank": self.rp_rank,
             "bio": self.bio,
@@ -182,29 +182,29 @@ class Character(db.Model):
             "agility": self.agility,
             "endurance": self.endurance,
             "stamina": self.stamina,
-            "chakra_control": self.chakra_control,
+            "ether_control": self.ether_control,
             # Daily training
             "daily_points_remaining": self.daily_points_remaining,
             "last_training_date": self.last_training_date,
             # Combat state
             "current_hp": self.current_hp,
-            "current_chakra": self.current_chakra,
-            # Clan modifiers
-            "clan_hp_mod": self.clan_hp_mod,
-            "clan_chakra_mod": self.clan_chakra_mod,
-            "clan_atk_mod": self.clan_atk_mod,
-            "clan_jatk_mod": self.clan_jatk_mod,
-            "clan_avd_mod": self.clan_avd_mod,
-            "clan_regen_mod": self.clan_regen_mod,
+            "current_ether": self.current_ether,
+            # Race modifiers
+            "race_hp_mod": self.race_hp_mod,
+            "race_ether_mod": self.race_ether_mod,
+            "race_atk_mod": self.race_atk_mod,
+            "race_eatk_mod": self.race_eatk_mod,
+            "race_avd_mod": self.race_avd_mod,
+            "race_regen_mod": self.race_regen_mod,
             # Derived stats
             "character_level": self.character_level,
             "max_hp": self.max_hp,
-            "max_chakra": self.max_chakra,
-            "chakra_regen": self.chakra_regen,
+            "max_ether": self.max_ether,
+            "ether_regen": self.ether_regen,
             "atk": self.atk,
             "defense": self.defense,
-            "jatk": self.jatk,
-            "jdef": self.jdef,
+            "eatk": self.eatk,
+            "edef": self.edef,
             "avd": self.avd,
             "acc": self.acc,
             "crit_percent": self.crit_percent,
@@ -222,8 +222,8 @@ class Character(db.Model):
             "id": self.id,
             "slot": self.slot,
             "name": self.name,
-            "clan": self.clan,
-            "village": self.village,
+            "race": self.race,
+            "city": self.city,
             "rp_rank": self.rp_rank,
             "character_level": self.character_level,
             "strength": self.strength,
@@ -231,5 +231,5 @@ class Character(db.Model):
             "agility": self.agility,
             "endurance": self.endurance,
             "stamina": self.stamina,
-            "chakra_control": self.chakra_control,
+            "ether_control": self.ether_control,
         }

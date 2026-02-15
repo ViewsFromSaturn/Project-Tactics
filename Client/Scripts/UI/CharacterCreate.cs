@@ -2,17 +2,17 @@ using Godot;
 using System;
 using System.Text.Json;
 
-namespace NarutoRP.UI;
+namespace ProjectTactics.UI;
 
 /// <summary>
-/// Character Creation Wizard - 3 steps: Name → Village → Bio.
+/// Character Creation Wizard - 3 steps: Name → City → Bio.
 /// Saves to Flask backend via ApiClient.
 /// </summary>
 public partial class CharacterCreate : Control
 {
 	private int _step = 1;
 	private string _charName = "";
-	private string _village = "";
+	private string _city = "";
 	private string _bio = "";
 
 	// UI references
@@ -25,10 +25,10 @@ public partial class CharacterCreate : Control
 	private LineEdit _nameInput;
 
 	// Step 2
-	private string _selectedVillage = "";
-	private Button _konohaBtn;
-	private Button _sunaBtn;
-	private Button _kiriBtn;
+	private string _selectedCity = "";
+	private Button _lumereBtn;
+	private Button _praevenBtn;
+	private Button _caldrisBtn;
 
 	// Step 3
 	private TextEdit _bioInput;
@@ -115,7 +115,7 @@ public partial class CharacterCreate : Control
 		header.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(header);
 
-		var desc = CreateLabel("This will be your ninja's name. Must be unique.", 14, "888888");
+		var desc = CreateLabel("This will be your character's name. Must be unique.", 14, "888888");
 		desc.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(desc);
 
@@ -161,15 +161,15 @@ public partial class CharacterCreate : Control
 		_nameInput.CallDeferred("grab_focus");
 	}
 
-	// ─── STEP 2: VILLAGE ─────────────────────────────────────
+	// ─── STEP 2: CITY ─────────────────────────────────────
 
 	private void BuildStep2()
 	{
-		var header = CreateLabel("Choose Your Village", 22, "FFFFFF");
+		var header = CreateLabel("Choose Your Starting City", 22, "FFFFFF");
 		header.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(header);
 
-		var desc = CreateLabel("This is where your ninja journey begins.", 14, "888888");
+		var desc = CreateLabel("This is where your journey begins.", 14, "888888");
 		desc.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(desc);
 
@@ -177,22 +177,22 @@ public partial class CharacterCreate : Control
 		spacer.CustomMinimumSize = new Vector2(0, 10);
 		_stepContainer.AddChild(spacer);
 
-		_konohaBtn = CreateVillageButton("Konohagakure", "Village Hidden in the Leaves");
-		_konohaBtn.Pressed += () => SelectVillage("Konohagakure", _konohaBtn);
-		_stepContainer.AddChild(_konohaBtn);
+		_lumereBtn = CreateCityButton("Lumere", "The City of Light — Capital of the Empire");
+		_lumereBtn.Pressed += () => SelectCity("Lumere", _lumereBtn);
+		_stepContainer.AddChild(_lumereBtn);
 
-		_sunaBtn = CreateVillageButton("Sunagakure", "Village Hidden in the Sand");
-		_sunaBtn.Pressed += () => SelectVillage("Sunagakure", _sunaBtn);
-		_stepContainer.AddChild(_sunaBtn);
+		_praevenBtn = CreateCityButton("Praeven", "The City Before the Fall — Twin Seat of the Empire");
+		_praevenBtn.Pressed += () => SelectCity("Praeven", _praevenBtn);
+		_stepContainer.AddChild(_praevenBtn);
 
-		_kiriBtn = CreateVillageButton("Kirigakure", "Village Hidden in the Mist");
-		_kiriBtn.Pressed += () => SelectVillage("Kirigakure", _kiriBtn);
-		_stepContainer.AddChild(_kiriBtn);
+		_caldrisBtn = CreateCityButton("Caldris", "The Free City — Outside the Empire");
+		_caldrisBtn.Pressed += () => SelectCity("Caldris", _caldrisBtn);
+		_stepContainer.AddChild(_caldrisBtn);
 
 		// Restore selection
-		if (_selectedVillage == "Konohagakure") HighlightVillage(_konohaBtn);
-		else if (_selectedVillage == "Sunagakure") HighlightVillage(_sunaBtn);
-		else if (_selectedVillage == "Kirigakure") HighlightVillage(_kiriBtn);
+		if (_selectedCity == "Lumere") HighlightCity(_lumereBtn);
+		else if (_selectedCity == "Praeven") HighlightCity(_praevenBtn);
+		else if (_selectedCity == "Caldris") HighlightCity(_caldrisBtn);
 
 		var btnRow = new HBoxContainer();
 		btnRow.Alignment = BoxContainer.AlignmentMode.Center;
@@ -206,29 +206,29 @@ public partial class CharacterCreate : Control
 		var nextBtn = CreateStyledButton("NEXT →");
 		nextBtn.Pressed += () =>
 		{
-			if (string.IsNullOrEmpty(_selectedVillage))
+			if (string.IsNullOrEmpty(_selectedCity))
 			{
-				_errorLabel.Text = "Please select a village.";
+				_errorLabel.Text = "Please select a city.";
 				return;
 			}
-			_village = _selectedVillage;
+			_city = _selectedCity;
 			ShowStep(3);
 		};
 		btnRow.AddChild(nextBtn);
 	}
 
-	private void SelectVillage(string village, Button btn)
+	private void SelectCity(string city, Button btn)
 	{
-		_selectedVillage = village;
+		_selectedCity = city;
 		// Reset all
-		ResetVillageButton(_konohaBtn);
-		ResetVillageButton(_sunaBtn);
-		ResetVillageButton(_kiriBtn);
+		ResetCityButton(_lumereBtn);
+		ResetCityButton(_praevenBtn);
+		ResetCityButton(_caldrisBtn);
 		// Highlight selected
-		HighlightVillage(btn);
+		HighlightCity(btn);
 	}
 
-	private void HighlightVillage(Button btn)
+	private void HighlightCity(Button btn)
 	{
 		var style = new StyleBoxFlat();
 		style.BgColor = new Color("2a2a3e");
@@ -242,7 +242,7 @@ public partial class CharacterCreate : Control
 		btn.AddThemeStyleboxOverride("normal", style);
 	}
 
-	private void ResetVillageButton(Button btn)
+	private void ResetCityButton(Button btn)
 	{
 		if (btn == null) return;
 		var style = new StyleBoxFlat();
@@ -257,14 +257,14 @@ public partial class CharacterCreate : Control
 		btn.AddThemeStyleboxOverride("normal", style);
 	}
 
-	private Button CreateVillageButton(string name, string subtitle)
+	private Button CreateCityButton(string name, string subtitle)
 	{
 		var btn = new Button();
 		btn.Text = $"{name}\n{subtitle}";
 		btn.CustomMinimumSize = new Vector2(400, 50);
 		btn.AddThemeFontSizeOverride("font_size", 16);
 		btn.AddThemeColorOverride("font_color", Colors.White);
-		ResetVillageButton(btn);
+		ResetCityButton(btn);
 		return btn;
 	}
 
@@ -276,12 +276,12 @@ public partial class CharacterCreate : Control
 		header.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(header);
 
-		var desc = CreateLabel("Write a brief backstory for your ninja. (Optional)", 14, "888888");
+		var desc = CreateLabel("Write a brief backstory for your character. (Optional)", 14, "888888");
 		desc.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(desc);
 
 		_bioInput = new TextEdit();
-		_bioInput.PlaceholderText = "A young ninja from the village...";
+		_bioInput.PlaceholderText = "A traveler arriving in the city...";
 		_bioInput.Text = _bio;
 		_bioInput.CustomMinimumSize = new Vector2(500, 120);
 		_bioInput.WrapMode = TextEdit.LineWrappingMode.Boundary;
@@ -315,7 +315,7 @@ public partial class CharacterCreate : Control
 		var sep = new HSeparator();
 		_stepContainer.AddChild(sep);
 
-		var summary = CreateLabel($"— SUMMARY —\nName: {_charName}\nVillage: {_village}\nStarting Rank: Academy Student", 14, "AAAAAA");
+		var summary = CreateLabel($"— SUMMARY —\nName: {_charName}\nCity: {_city}\nStarting Rank: Aspirant", 14, "AAAAAA");
 		_stepContainer.AddChild(summary);
 
 		// Buttons
@@ -364,7 +364,7 @@ public partial class CharacterCreate : Control
 		if (gm != null && int.TryParse(gm.PendingSlot, out int parsed))
 			slot = parsed;
 
-		var resp = await api.CreateCharacter(_charName, _village, _bio, slot);
+		var resp = await api.CreateCharacter(_charName, _city, _bio, slot);
 
 		if (resp.Success)
 		{
@@ -377,8 +377,8 @@ public partial class CharacterCreate : Control
 			var data = new Core.PlayerData
 			{
 				CharacterName = c.GetProperty("name").GetString(),
-				ClanName = c.GetProperty("clan").GetString(),
-				Village = c.GetProperty("village").GetString(),
+				RaceName = c.GetProperty("race").GetString(),
+				City = c.GetProperty("city").GetString(),
 				Allegiance = c.GetProperty("allegiance").GetString(),
 				RpRank = c.GetProperty("rp_rank").GetString(),
 				Bio = c.GetProperty("bio").GetString(),
@@ -387,10 +387,10 @@ public partial class CharacterCreate : Control
 				Agility = c.GetProperty("agility").GetInt32(),
 				Endurance = c.GetProperty("endurance").GetInt32(),
 				Stamina = c.GetProperty("stamina").GetInt32(),
-				ChakraControl = c.GetProperty("chakra_control").GetInt32(),
+				EtherControl = c.GetProperty("ether_control").GetInt32(),
 				DailyPointsRemaining = c.GetProperty("daily_points_remaining").GetInt32(),
 				CurrentHp = c.GetProperty("current_hp").GetInt32(),
-				CurrentChakra = c.GetProperty("current_chakra").GetInt32(),
+				CurrentEther = c.GetProperty("current_ether").GetInt32(),
 			};
 
 			string charId = c.GetProperty("id").GetString();

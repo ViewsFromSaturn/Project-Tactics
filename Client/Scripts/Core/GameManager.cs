@@ -1,7 +1,7 @@
 using Godot;
 using System;
 
-namespace NarutoRP.Core;
+namespace ProjectTactics.Core;
 
 /// <summary>
 /// Singleton game manager. Handles state, scene transitions, and active character.

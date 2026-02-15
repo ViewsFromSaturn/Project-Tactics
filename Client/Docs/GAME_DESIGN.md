@@ -1,4 +1,4 @@
-# Naruto RP — Game Design Reference
+# Project Tactics — Game Design Reference
 
 ## Stat System Overview
 
@@ -7,14 +7,14 @@
 Players receive daily points to invest directly into these 6 stats.
 1 point = +1 to that stat. No EXP bars.
 
-| Stat           | Abbr | Purpose                              |
-|----------------|------|--------------------------------------|
-| Strength       | STR  | Physical power, taijutsu damage      |
-| Speed          | SPD  | Burst speed, turn order, movement    |
-| Agility        | AGI  | Reflexes, dodge, accuracy            |
-| Endurance      | END  | Toughness, HP, physical defense      |
-| Stamina        | STA  | Sustain, HP/Chakra pool depth        |
-| Chakra Control | CKC  | Jutsu power, chakra pool, regen      |
+| Stat          | Abbr | Purpose                              |
+|---------------|------|--------------------------------------|
+| Strength      | STR  | Physical power, melee damage         |
+| Speed         | SPD  | Burst speed, turn order, movement    |
+| Agility       | AGI  | Reflexes, dodge, accuracy            |
+| Endurance     | END  | Toughness, HP, physical defense      |
+| Stamina       | STA  | Sustain, HP/Ether pool depth         |
+| Ether Control | ETC  | Ability power, ether pool, regen     |
 
 ### Daily Points
 
@@ -40,14 +40,14 @@ Character Level = average of all 6 stats (rounded down)
 
 | Stat          | Formula                                           | Notes                    |
 |---------------|---------------------------------------------------|--------------------------|
-| HP            | (200 + END×15 + STA×8) × ClanHP                  | Health pool              |
-| Chakra        | (100 + CKC×20 + STA×5) × ClanChakra              | Jutsu resource           |
-| Chakra Regen  | CKC × 0.8 × ClanRegen                            | Per turn in combat       |
-| ATK           | (STR×2.5 + SPD×0.5) × ClanATK                    | Physical damage          |
+| HP            | (200 + END×15 + STA×8) × RaceHP               | Health pool              |
+| Ether         | (100 + ETC×20 + STA×5) × RaceEther            | Ability resource         |
+| Ether Regen   | ETC × 0.8 × RaceRegen                         | Per turn in combat       |
+| ATK           | (STR×2.5 + SPD×0.5) × RaceATK                 | Physical damage          |
 | DEF           | END×2.0 + STA×0.5                                 | Physical damage reduction|
-| JATK          | (CKC×2.5 + AGI×0.3) × ClanJATK                   | Jutsu damage             |
-| JDEF          | CKC×1.0 + END×1.0                                 | Jutsu damage reduction   |
-| AVD           | (AGI×1.5 + SPD×1.0) × ClanAVD                    | Dodge chance base        |
+| EATK          | (ETC×2.5 + AGI×0.3) × RaceEATK                | Ether ability damage     |
+| EDEF          | ETC×1.0 + END×1.0                                 | Ether damage reduction   |
+| AVD           | (AGI×1.5 + SPD×1.0) × RaceAVD                 | Dodge chance base        |
 | ACC           | AGI×1.0 + SPD×0.5                                 | Hit chance base          |
 | CRIT%         | SPD×0.3 + AGI×0.2                                 | Critical hit chance      |
 | MOVE          | 4 + floor(SPD/15), max 7                          | Tiles per turn           |
@@ -64,14 +64,14 @@ Dodge% = (AVD × 0.4) + (AGI × 0.2) - (AttackerDEX × 0.3) + Terrain + Facing
 Hard cap: 75%
 ```
 
-### Jutsu Dodge
+### Ether Ability Dodge
 ```
 Dodge% = (AVD × 0.3) + (AGI × 0.2) - (AttackerINT × 0.3) + Terrain
 AOE: halved
 Hard cap: 60%
 ```
 
-### Genjutsu Resist
+### Mental Resist
 ```
 Resist% = (MND × 0.4) + (SEN × 0.3) - (AttackerINT × 0.3)
 Hard cap: 70%
@@ -88,10 +88,10 @@ Final = max(Raw - DEF × 0.8, 1)
 Cap: 60% of target MaxHP per hit
 ```
 
-### Jutsu
+### Ether Ability
 ```
-Raw = (AttackerJATK × 1.5 + JutsuPower) × ElementBonus
-Final = max(Raw - JDEF × 0.8, 1)
+Raw = (AttackerEATK × 1.5 + AbilityPower) × ElementBonus
+Final = max(Raw - EDEF × 0.8, 1)
 Cap: 60% of target MaxHP per hit
 ```
 
@@ -107,43 +107,43 @@ Cap: 60% of target MaxHP per hit
 - RT Ceiling: 150 (slow builds protected)
 
 ### Action Weights
-| Action         | Weight |
-|----------------|--------|
-| Wait / Defend  | 10     |
-| Move Only      | 15     |
-| Light Attack   | 20     |
-| Medium Jutsu   | 30     |
-| Heavy Jutsu    | 40     |
-| Finishing Move  | 50     |
+| Action           | Weight |
+|------------------|--------|
+| Wait / Defend    | 10     |
+| Move Only        | 15     |
+| Light Attack     | 20     |
+| Medium Ability   | 30     |
+| Heavy Ability    | 40     |
+| Finishing Move   | 50     |
 
 ---
 
 ## Progression Systems (Future)
 
-| System         | Source                | Spends On               |
-|----------------|-----------------------|--------------------------|
-| Daily Points   | Automatic (daily)     | Training stats (STR etc) |
-| RPP            | RP participation      | Jutsu, perks, upgrades   |
-| Rank           | Staff/events          | Story access, jutsu tier |
-| Clan Passives  | Character creation    | Stat modifiers (free)    |
-| Bonus EXP      | TBD system            | Extra daily points       |
+| System           | Source                | Spends On                |
+|------------------|-----------------------|--------------------------|
+| Daily Points     | Automatic (daily)     | Training stats (STR etc) |
+| RPP              | RP participation      | Abilities, perks, upgrades |
+| Rank             | Staff/events          | Story access, ability tier |
+| Race Passives | In-game RP            | Stat modifiers (free)    |
+| Bonus EXP        | TBD system            | Extra daily points       |
 
 ---
 
-## Clan Passives
+## Race Passives
 
-| Clan         | HP    | Chakra | ATK   | JATK  | AVD   | Regen |
-|--------------|-------|--------|-------|-------|-------|-------|
-| Uzumaki      | +15%  | +20%   | —     | —     | —     | +25%  |
-| Uchiha       | —     | +10%   | —     | +15%  | +10%  | —     |
-| Hyuga        | —     | +5%    | +10%  | —     | +15%  | +10%  |
-| Nara         | —     | +10%   | —     | +10%  | +5%   | +15%  |
-| Akimichi     | +25%  | -10%   | +20%  | -10%  | -10%  | —     |
-| Aburame      | +5%   | +15%   | —     | +5%   | +5%   | +15%  |
-| Inuzuka      | +10%  | -5%    | +15%  | -5%   | +10%  | —     |
-| Kazekage     | +10%  | +15%   | —     | +15%  | -5%   | —     |
-| Hozuki       | +5%   | +10%   | +10%  | +5%   | +10%  | —     |
-| Clanless     | +5%   | +5%    | +5%   | +5%   | +5%   | +5%   |
+| Race                 | HP    | Ether  | ATK   | EATK  | AVD   | Regen |
+|----------------------|-------|--------|-------|-------|-------|-------|
+| Ironblood Covenant   | +15%  | +20%   | —     | —     | —     | +25%  |
+| Ashen Veil           | —     | +10%   | —     | +15%  | +10%  | —     |
+| Pale Ward            | —     | +5%    | +10%  | —     | +15%  | +10%  |
+| Duskwatch            | —     | +10%   | —     | +10%  | +5%   | +15%  |
+| Stoneborne           | +25%  | -10%   | +20%  | -10%  | -10%  | —     |
+| Thornmantle          | +5%   | +15%   | —     | +5%   | +5%   | +15%  |
+| Redfang              | +10%  | -5%    | +15%  | -5%   | +10%  | —     |
+| Sandborn             | +10%  | +15%   | —     | +15%  | -5%   | —     |
+| Tidecaller           | +5%   | +10%   | +10%  | +5%   | +10%  | —     |
+| Human                | +5%   | +5%    | +5%   | +5%   | +5%   | +5%   |
 
 ---
 
@@ -154,7 +154,7 @@ Cap: 60% of target MaxHP per hit
    → Active player writes action narration
 
 2. MECHANICAL ACTION (30s timer)
-   → Move → Act (Jutsu/Attack/Item) → Face
+   → Move → Act (Ability/Attack/Item) → Face
 
 3. REACTION POST (optional, 60s timer)
    → Defender narrates response
@@ -173,7 +173,7 @@ Cap: 60% of target MaxHP per hit
 |-----------------------|--------------------------------------|
 | GameManager.cs        | Singleton, game state, save/load     |
 | PlayerData.cs         | Stat system, derived stats, formulas |
-| ClanData.cs           | Clan definitions, passive modifiers  |
+| RaceData.cs        | Race definitions, passive modifiers |
 | DailyTraining.cs      | Point allocation, soft cap, reset    |
 | PlayerController.cs   | Overworld movement, input handling   |
 | CameraController.cs   | Smooth follow cam, zoom, shake       |

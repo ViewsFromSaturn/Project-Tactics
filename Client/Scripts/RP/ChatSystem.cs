@@ -3,7 +3,7 @@
 //  TODO: Implement Say, Whisper, OOC, Emote, Status verbs
 // ═══════════════════════════════════════════════════════════
 
-namespace NarutoRP.RP;
+namespace ProjectTactics.RP;
 
 public partial class ChatSystem : Godot.Node
 {

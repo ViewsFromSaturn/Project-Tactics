@@ -1,7 +1,7 @@
 using Godot;
 using System.Text.Json;
 
-namespace NarutoRP.UI;
+namespace ProjectTactics.UI;
 
 /// <summary>
 /// Character Select Screen - Loads character slots from Flask API.
@@ -42,7 +42,7 @@ public partial class CharacterSelect : Control
 
         // Welcome message with username
         var api = Networking.ApiClient.Instance;
-        string name = api != null ? api.Username : "Ninja";
+        string name = api != null ? api.Username : "Traveler";
         _welcomeLabel = CreateLabel($"Welcome back, {name}", 14, "888888");
         _welcomeLabel.HorizontalAlignment = HorizontalAlignment.Center;
         mainVbox.AddChild(_welcomeLabel);
@@ -129,7 +129,7 @@ public partial class CharacterSelect : Control
     {
         string charId = data.GetProperty("id").GetString();
         string charName = data.GetProperty("name").GetString();
-        string village = data.GetProperty("village").GetString();
+        string city = data.GetProperty("city").GetString();
         string rank = data.GetProperty("rp_rank").GetString();
         int level = data.GetProperty("character_level").GetInt32();
         int str = data.GetProperty("strength").GetInt32();
@@ -137,7 +137,7 @@ public partial class CharacterSelect : Control
         int agi = data.GetProperty("agility").GetInt32();
         int end = data.GetProperty("endurance").GetInt32();
         int sta = data.GetProperty("stamina").GetInt32();
-        int ckc = data.GetProperty("chakra_control").GetInt32();
+        int etc = data.GetProperty("ether_control").GetInt32();
 
         var panel = new PanelContainer();
         panel.CustomMinimumSize = new Vector2(500, 100);
@@ -163,8 +163,8 @@ public partial class CharacterSelect : Control
         hbox.AddChild(infoVbox);
 
         infoVbox.AddChild(CreateLabel($"Slot {slotNum}: {charName}", 20, "FFFFFF"));
-        infoVbox.AddChild(CreateLabel($"Lv.{level}  |  {rank}  |  {village}", 14, "AAAAAA"));
-        infoVbox.AddChild(CreateLabel($"STR:{str}  SPD:{spd}  AGI:{agi}  END:{end}  STA:{sta}  CKC:{ckc}", 12, "888888"));
+        infoVbox.AddChild(CreateLabel($"Lv.{level}  |  {rank}  |  {city}", 14, "AAAAAA"));
+        infoVbox.AddChild(CreateLabel($"STR:{str}  SPD:{spd}  AGI:{agi}  END:{end}  STA:{sta}  ETC:{etc}", 12, "888888"));
 
         // Buttons
         var btnVbox = new VBoxContainer();
@@ -240,8 +240,8 @@ public partial class CharacterSelect : Control
         var data = new Core.PlayerData
         {
             CharacterName = c.GetProperty("name").GetString(),
-            ClanName = c.GetProperty("clan").GetString(),
-            Village = c.GetProperty("village").GetString(),
+            RaceName = c.GetProperty("race").GetString(),
+            City = c.GetProperty("city").GetString(),
             Allegiance = c.GetProperty("allegiance").GetString(),
             RpRank = c.GetProperty("rp_rank").GetString(),
             Bio = c.GetProperty("bio").GetString(),
@@ -250,11 +250,11 @@ public partial class CharacterSelect : Control
             Agility = c.GetProperty("agility").GetInt32(),
             Endurance = c.GetProperty("endurance").GetInt32(),
             Stamina = c.GetProperty("stamina").GetInt32(),
-            ChakraControl = c.GetProperty("chakra_control").GetInt32(),
+            EtherControl = c.GetProperty("ether_control").GetInt32(),
             DailyPointsRemaining = c.GetProperty("daily_points_remaining").GetInt32(),
             LastTrainingDate = c.GetProperty("last_training_date").GetString(),
             CurrentHp = c.GetProperty("current_hp").GetInt32(),
-            CurrentChakra = c.GetProperty("current_chakra").GetInt32(),
+            CurrentEther = c.GetProperty("current_ether").GetInt32(),
         };
 
         var gm = Core.GameManager.Instance;

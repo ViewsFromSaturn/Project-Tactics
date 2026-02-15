@@ -12,7 +12,7 @@ from routes.auth import require_auth
 characters_bp = Blueprint("characters", __name__)
 
 MAX_CHARACTERS = 3
-VALID_VILLAGES = ["Konohagakure", "Sunagakure", "Kirigakure"]
+VALID_CITIES = ["Lumere", "Praeven", "Caldris"]
 
 
 # ═══════════════════════════════════════════════════════════
@@ -44,7 +44,7 @@ def create_character():
         return jsonify({"error": "No data provided"}), 400
 
     name = data.get("name", "").strip()
-    village = data.get("village", "").strip()
+    city = data.get("city", "").strip()
     bio = data.get("bio", "").strip()
     slot = data.get("slot", 1)
 
@@ -53,8 +53,8 @@ def create_character():
 
     if not name or len(name) < 2 or len(name) > 30:
         errors.append("Name must be 2-30 characters.")
-    if village not in VALID_VILLAGES:
-        errors.append(f"Village must be one of: {', '.join(VALID_VILLAGES)}")
+    if city not in VALID_CITIES:
+        errors.append(f"City must be one of: {', '.join(VALID_CITIES)}")
     if slot not in [1, 2, 3]:
         errors.append("Slot must be 1, 2, or 3.")
     if len(bio) > 500:
@@ -84,29 +84,29 @@ def create_character():
         account_id=g.current_account.id,
         slot=slot,
         name=name,
-        village=village,
+        city=city,
         bio=bio,
-        clan="Clanless",
+        race="Human",
         allegiance="None",
-        rp_rank="Academy Student",
+        rp_rank="Aspirant",
         strength=1,
         speed=1,
         agility=1,
         endurance=1,
         stamina=1,
-        chakra_control=1,
+        ether_control=1,
         daily_points_remaining=5,
-        clan_hp_mod=1.0,
-        clan_chakra_mod=1.0,
-        clan_atk_mod=1.0,
-        clan_jatk_mod=1.0,
-        clan_avd_mod=1.0,
-        clan_regen_mod=1.0,
+        race_hp_mod=1.0,
+        race_ether_mod=1.0,
+        race_atk_mod=1.0,
+        race_eatk_mod=1.0,
+        race_avd_mod=1.0,
+        race_regen_mod=1.0,
     )
 
-    # Initialize HP/Chakra to max
+    # Initialize HP/Ether to max
     character.current_hp = character.max_hp
-    character.current_chakra = character.max_chakra
+    character.current_ether = character.max_ether
 
     db.session.add(character)
     db.session.commit()
@@ -145,7 +145,7 @@ def update_character(character_id):
     data = request.get_json()
 
     # Only allow updating specific fields from client
-    allowed_fields = ["bio", "current_hp", "current_chakra",
+    allowed_fields = ["bio", "current_hp", "current_ether",
                       "daily_points_remaining", "last_training_date"]
 
     for field in allowed_fields:
@@ -208,8 +208,8 @@ def train_stat(character_id):
         "end": "endurance",
         "stamina": "stamina",
         "sta": "stamina",
-        "chakra_control": "chakra_control",
-        "ckc": "chakra_control",
+        "ether_control": "ether_control",
+        "etc": "ether_control",
     }
 
     if stat not in valid_stats:
@@ -241,7 +241,7 @@ def train_stat(character_id):
     # ─── SOFT CAP (DIMINISHING RETURNS) ──────────────────
     current_value = getattr(character, stat_name)
     stats = [character.strength, character.speed, character.agility,
-             character.endurance, character.stamina, character.chakra_control]
+             character.endurance, character.stamina, character.ether_control]
     lowest = min(stats)
     gap = current_value - lowest
 
@@ -278,9 +278,9 @@ def train_stat(character_id):
     setattr(character, stat_name, current_value + actual_gain)
     character.daily_points_remaining -= points_spent
 
-    # Recalc current HP/chakra (cap at new max)
+    # Recalc current HP/ether (cap at new max)
     character.current_hp = min(character.current_hp, character.max_hp)
-    character.current_chakra = min(character.current_chakra, character.max_chakra)
+    character.current_ether = min(character.current_ether, character.max_ether)
 
     db.session.commit()
 
