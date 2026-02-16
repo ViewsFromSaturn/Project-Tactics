@@ -1,0 +1,105 @@
+<Window x:Class="ProjectTactics.Windows.FloatingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="CanResize"
+        Width="400" Height="500"
+        MinWidth="300" MinHeight="300"
+        MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+    
+    
+    
+    
+    <Border CornerRadius="12" 
+            BorderThickness="1"
+            Margin="10">
+        
+        
+        
+        
+        <!-- Glass/Blur Background -->
+        <Border.Background>
+            <SolidColorBrush Color="#D9080812" Opacity="0.85"/>
+        </Border.Background>
+        
+        <Border.BorderBrush>
+            <SolidColorBrush Color="#593C4150" Opacity="0.5"/>
+        </Border.BorderBrush>
+        
+        <!-- Drop Shadow Effect -->
+        <Border.Effect>
+            <DropShadowEffect Color="Black" 
+                            BlurRadius="30" 
+                            ShadowDepth="0" 
+                            Opacity="0.8"/>
+        </Border.Effect>
+        
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            
+            <!-- Title Bar -->
+            <Border Grid.Row="0" 
+                    x:Name="TitleBar"
+                    Background="#14080812"
+                    BorderBrush="#593C4150" 
+                    BorderThickness="0,0,0,1"
+                    Padding="16,12"
+                    Cursor="Hand">
+                
+                <Grid>
+                    <TextBlock x:Name="TitleText"
+                             Text="Window Title"
+                             FontFamily="Georgia"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="#D4D2CC"
+                             VerticalAlignment="Center"/>
+                    
+                    <!-- Close Button -->
+                    <Button Content="✕"
+                          HorizontalAlignment="Right"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          Foreground="#64647A"
+                          FontSize="16"
+                          Width="32"
+                          Height="32"
+                          Cursor="Hand"
+                          Click="CloseButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                                                                                                                <Border Background="{TemplateBinding Background}"
+                                                  CornerRadius="4">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#33C85050"/>
+                                        <Setter Property="Foreground" Value="#C85050"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+            </Border>
+            
+            <!-- Content Area -->
+            <ContentPresenter Grid.Row="1" 
+                            x:Name="WindowContent"
+                            Margin="0"/>
+        </Grid>
+    </Border>
+</Window>

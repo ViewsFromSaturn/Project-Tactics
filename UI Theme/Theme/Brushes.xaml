@@ -1,0 +1,52 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    
+    <!-- Background Brushes -->
+    <SolidColorBrush x:Key="BackgroundDark" Color="#080812"/>
+    <SolidColorBrush x:Key="BackgroundDarkTransparent" Color="#D9080812" Opacity="0.85"/>
+    <SolidColorBrush x:Key="CardBackground" Color="#1A3C4150"/>
+    <SolidColorBrush x:Key="CardBackgroundHover" Color="#263C4150"/>
+    
+    <!-- Border Brushes -->
+    <SolidColorBrush x:Key="BorderSubtle" Color="#593C4150" Opacity="0.35"/>
+    <SolidColorBrush x:Key="BorderMedium" Color="#803C4150" Opacity="0.5"/>
+    <SolidColorBrush x:Key="BorderBright" Color="#B33C4150" Opacity="0.7"/>
+    
+    <!-- Text Brushes -->
+    <SolidColorBrush x:Key="TextPrimary" Color="#D4D2CC"/>
+    <SolidColorBrush x:Key="TextSecondary" Color="#9090A0"/>
+    <SolidColorBrush x:Key="TextDim" Color="#64647A"/>
+    <SolidColorBrush x:Key="TextBright" Color="#EEEEE8"/>
+    
+    <!-- Accent Brushes -->
+    <SolidColorBrush x:Key="AccentViolet" Color="#8B5CF6"/>
+    <SolidColorBrush x:Key="AccentVioletDim" Color="#4D8B5CF6" Opacity="0.3"/>
+    
+    
+    
+    <SolidColorBrush x:Key="AccentEmerald" Color="#50C878"/>
+    <SolidColorBrush x:Key="AccentEmeraldDim" Color="#4D50C878" Opacity="0.3"/>
+    
+    <SolidColorBrush x:Key="AccentGold" Color="#D4A843"/>
+    <SolidColorBrush x:Key="AccentGoldDim" Color="#4DD4A843" Opacity="0.3"/>
+    
+    <SolidColorBrush x:Key="AccentRuby" Color="#C85050"/>
+    <SolidColorBrush x:Key="AccentRubyDim" Color="#33C85050" Opacity="0.2"/>
+    
+    <!-- Gradients -->
+    <LinearGradientBrush x:Key="GradientViolet" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#8B5CF6" Offset="0"/>
+        <GradientStop Color="#6B21A8" Offset="1"/>
+    </LinearGradientBrush>
+    
+    <LinearGradientBrush x:Key="GradientEmerald" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#50C878" Offset="0"/>
+        <GradientStop Color="#059669" Offset="1"/>
+    </LinearGradientBrush>
+    
+    <LinearGradientBrush x:Key="GradientGold" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#D4A843" Offset="0"/>
+        <GradientStop Color="#B8860B" Offset="1"/>
+    </LinearGradientBrush>
+    
+</ResourceDictionary>
