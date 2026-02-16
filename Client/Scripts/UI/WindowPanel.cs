@@ -13,9 +13,32 @@ namespace ProjectTactics.UI.Panels;
 public abstract partial class WindowPanel : MarginContainer
 {
 	// ═══ CONFIG — set in subclass constructor ═══
+	// Supports both naming conventions (PanelTitle/WindowTitle, etc.)
+
 	public string PanelTitle { get; set; } = "Panel";
+
+	/// <summary>Alias for PanelTitle — some panels use this name.</summary>
+	public string WindowTitle
+	{
+		get => PanelTitle;
+		set => PanelTitle = value;
+	}
+
 	public float DefaultWidth { get; set; } = 400f;
 	public float DefaultHeight { get; set; } = 500f;
+
+	/// <summary>Set both width and height at once via Vector2.</summary>
+	public Vector2 DefaultSize
+	{
+		get => new Vector2(DefaultWidth, DefaultHeight);
+		set { DefaultWidth = value.X; DefaultHeight = value.Y; }
+	}
+
+	/// <summary>Optional default screen position. Zero = center.</summary>
+	public Vector2 DefaultPosition { get; set; } = Vector2.Zero;
+
+	// ═══ OPEN / CLOSE STATE ═══
+	public bool IsOpen { get; private set; } = false;
 
 	// ═══ INTERNAL ═══
 	private ScrollContainer _scroll;
@@ -76,6 +99,33 @@ public abstract partial class WindowPanel : MarginContainer
 	/// <summary>Called when the panel is opened or refreshed. Override to update data.</summary>
 	public virtual void OnOpen() { }
 
+	/// <summary>Called when the panel is closed. Override for cleanup.</summary>
+	public virtual void OnClose() { }
+
+	// ═══ OPEN / CLOSE / TOGGLE ═══
+
+	public void Open()
+	{
+		if (IsOpen) return;
+		IsOpen = true;
+		Visible = true;
+		OnOpen();
+	}
+
+	public void Close()
+	{
+		if (!IsOpen) return;
+		IsOpen = false;
+		OnClose();
+		Visible = false;
+	}
+
+	public void Toggle()
+	{
+		if (IsOpen) Close();
+		else Open();
+	}
+
 	// ═══ PUBLIC API ═══
 
 	/// <summary>Clear and rebuild all content.</summary>
@@ -92,13 +142,13 @@ public abstract partial class WindowPanel : MarginContainer
 	/// <summary>Get the content VBox for direct manipulation.</summary>
 	protected VBoxContainer ContentBox => _content;
 
-	// ═══ HELPERS for subclasses (ported from SlidePanel) ═══
+	// ═══ HELPERS for subclasses ═══
 
 	protected static Label SectionHeader(string text)
 	{
 		var label = new Label();
 		label.Text = text.ToUpper();
-		label.AddThemeColorOverride("font_color", TaskadeTheme.TextDim);
+		label.AddThemeColorOverride("font_color", UITheme.TextDim);
 		label.AddThemeFontSizeOverride("font_size", 10);
 		if (UITheme.FontBodySemiBold != null)
 			label.AddThemeFontOverride("font", UITheme.FontBodySemiBold);
@@ -107,14 +157,14 @@ public abstract partial class WindowPanel : MarginContainer
 
 	protected static Control ThinSeparator()
 	{
-		return TaskadeTheme.CreateSeparator();
+		return UITheme.CreateSeparator();
 	}
 
 	protected static Label InfoRow(string label, string value)
 	{
 		var l = new Label();
 		l.Text = $"{label}: {value}";
-		l.AddThemeColorOverride("font_color", TaskadeTheme.TextPrimary);
+		l.AddThemeColorOverride("font_color", UITheme.Text);
 		l.AddThemeFontSizeOverride("font_size", 13);
 		if (UITheme.FontBody != null) l.AddThemeFontOverride("font", UITheme.FontBody);
 		return l;
@@ -124,7 +174,7 @@ public abstract partial class WindowPanel : MarginContainer
 	{
 		var l = new Label();
 		l.Text = text;
-		l.AddThemeColorOverride("font_color", TaskadeTheme.TextDim);
+		l.AddThemeColorOverride("font_color", UITheme.TextDim);
 		l.AddThemeFontSizeOverride("font_size", 13);
 		if (UITheme.FontBody != null) l.AddThemeFontOverride("font", UITheme.FontBody);
 		l.AutowrapMode = TextServer.AutowrapMode.Word;

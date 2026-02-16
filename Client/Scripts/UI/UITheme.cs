@@ -612,4 +612,28 @@ public static class UITheme
 		}
 		return style;
 	}
+	
+	public static void SetPanelSelected(PanelContainer panel, bool selected)
+	{
+		var style = new StyleBoxFlat();
+		style.SetCornerRadiusAll(8);
+		style.ContentMarginLeft = 12;
+		style.ContentMarginRight = 12;
+		style.ContentMarginTop = 10;
+		style.ContentMarginBottom = 10;
+		if (selected)
+		{
+			style.BgColor = new Color(0.047f, 0.047f, 0.094f, 0.9f);
+			style.BorderColor = Accent;
+			style.SetBorderWidthAll(2);
+		}
+		else
+		{
+			style.BgColor = new Color(0.031f, 0.031f, 0.063f, 0.62f);
+			style.BorderColor = BorderLight;
+			style.SetBorderWidthAll(1);
+		}
+
+		panel.AddThemeStyleboxOverride("panel", style);
+	}
 }
