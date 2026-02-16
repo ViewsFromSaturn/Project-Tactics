@@ -66,14 +66,12 @@ public partial class ChatPanel : Control
 	readonly Dictionary<string, ColorRect> _tabUnreadDots = new();
 
 	// Emote panel refs
-	PanelContainer _emotePanel;
+	Panel _emotePanel;
 	TextEdit _emoteTextarea;
 
 	// Settings panel refs
 	PanelContainer _settingsPanel;
-	LineEdit _colorHexInput;
-	ColorRect _colorPreviewSwatch;
-	Label _colorPreviewName;
+	ColorWheelPicker _colorWheel;
 	HSlider _fontSizeSlider;
 	Label _textSizeLabel;
 
@@ -108,6 +106,7 @@ public partial class ChatPanel : Control
 
 	// Chat bubble ref (set by OverworldHUD)
 	public Label ChatBubbleLabel { get; set; }
+	public PanelContainer ChatBubbleBg { get; set; }
 	private float _bubbleTimer = 0f;
 
 	public override void _Ready()
@@ -126,8 +125,7 @@ public partial class ChatPanel : Control
 		// Track focus state for input blocking
 		bool chatFocused = _chatInput?.HasFocus() == true;
 		bool emoteFocused = _emoteTextarea?.HasFocus() == true;
-		bool colorFocused = _colorHexInput?.HasFocus() == true;
-		IsUiFocused = chatFocused || emoteFocused || colorFocused;
+		IsUiFocused = chatFocused || emoteFocused;
 
 		// Release all drag states if mouse not held
 		if (!Input.IsMouseButtonPressed(MouseButton.Left))
@@ -149,18 +147,16 @@ public partial class ChatPanel : Control
 		if (_bubbleTimer > 0)
 		{
 			_bubbleTimer -= (float)delta;
-			if (_bubbleTimer <= 0 && ChatBubbleLabel != null)
+			if (_bubbleTimer <= 0)
 			{
-				ChatBubbleLabel.Visible = false;
-				var parent = ChatBubbleLabel.GetParent<Control>();
-				if (parent != null) parent.Visible = false;
+				if (ChatBubbleLabel != null) ChatBubbleLabel.Visible = false;
+				if (ChatBubbleBg != null) ChatBubbleBg.Visible = false;
 			}
-			else if (ChatBubbleLabel != null && _bubbleTimer < 1f)
+			else if (_bubbleTimer < 1f)
 			{
 				float alpha = _bubbleTimer;
-				ChatBubbleLabel.Modulate = new Color(1, 1, 1, alpha);
-				var parent = ChatBubbleLabel.GetParent<Control>();
-				if (parent != null) parent.Modulate = new Color(1, 1, 1, alpha);
+				if (ChatBubbleLabel != null) ChatBubbleLabel.Modulate = new Color(1, 1, 1, alpha);
+				if (ChatBubbleBg != null) ChatBubbleBg.Modulate = new Color(1, 1, 1, alpha);
 			}
 		}
 	}
@@ -592,6 +588,17 @@ public partial class ChatPanel : Control
 
 		_chatInput.TextSubmitted += OnTextSubmitted;
 		_chatInput.FocusEntered += ResetIdle;
+
+		// Intercept Tab before Godot uses it for focus navigation
+		_chatInput.GuiInput += (InputEvent ev) =>
+		{
+			if (ev is InputEventKey tabKey && tabKey.Pressed && tabKey.Keycode == Key.Tab)
+			{
+				CycleVerb();
+				_chatInput.CallDeferred("grab_focus"); // Keep focus on chat input
+				GetViewport().SetInputAsHandled();
+			}
+		};
 		inputRow.AddChild(_chatInput);
 
 		// Emote expand button ✎
@@ -626,7 +633,8 @@ public partial class ChatPanel : Control
 
 	private void BuildEmotePanel()
 	{
-		_emotePanel = new PanelContainer();
+		// Use Panel (not PanelContainer) so children keep their own positioning
+		_emotePanel = new Panel();
 		_emotePanel.Visible = false;
 		_emotePanel.MouseFilter = MouseFilterEnum.Stop;
 		_emotePanel.CustomMinimumSize = new Vector2(420, 260);
@@ -648,6 +656,7 @@ public partial class ChatPanel : Control
 		AddChild(_emotePanel);
 
 		var vbox = new VBoxContainer();
+		vbox.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 		vbox.AddThemeConstantOverride("separation", 0);
 		_emotePanel.AddChild(vbox);
 
@@ -861,39 +870,15 @@ public partial class ChatPanel : Control
 
 		vbox.AddChild(UITheme.CreateTitle("Chat Settings", 12));
 
-		// ─── IC Color section (hex input + preview) ─────────
+		// ─── IC Color section with HSL color wheel ─────────
 		vbox.AddChild(UITheme.CreateDim("IC COLOR", 10));
 
-		var colorRow = new HBoxContainer();
-		colorRow.AddThemeConstantOverride("separation", 10);
-		vbox.AddChild(colorRow);
-
-		_colorPreviewSwatch = new ColorRect();
-		_colorPreviewSwatch.CustomMinimumSize = new Vector2(28, 28);
-		_colorPreviewSwatch.Color = _playerIcColor;
-		colorRow.AddChild(_colorPreviewSwatch);
-
-		_colorHexInput = new LineEdit();
-		_colorHexInput.Text = "#" + _playerIcColor.ToHtml(false);
-		_colorHexInput.MaxLength = 7;
-		_colorHexInput.CustomMinimumSize = new Vector2(80, 0);
-		_colorHexInput.AddThemeFontSizeOverride("font_size", 12);
-		_colorHexInput.AddThemeColorOverride("font_color", UITheme.TextBright);
-		if (UITheme.FontNumbersMedium != null) _colorHexInput.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
-		var hexStyle = new StyleBoxFlat();
-		hexStyle.BgColor = new Color(0.078f, 0.078f, 0.118f, 0.8f);
-		hexStyle.SetCornerRadiusAll(4);
-		hexStyle.ContentMarginLeft = 8; hexStyle.ContentMarginRight = 8;
-		hexStyle.ContentMarginTop = 4; hexStyle.ContentMarginBottom = 4;
-		hexStyle.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.3f);
-		hexStyle.SetBorderWidthAll(1);
-		_colorHexInput.AddThemeStyleboxOverride("normal", hexStyle);
-		_colorHexInput.TextSubmitted += OnColorHexSubmitted;
-		colorRow.AddChild(_colorHexInput);
-
-		var playerName = Core.GameManager.Instance?.ActiveCharacter?.CharacterName ?? "Player";
-		_colorPreviewName = UITheme.CreateBody(playerName, 12, _playerIcColor);
-		colorRow.AddChild(_colorPreviewName);
+		_colorWheel = new ColorWheelPicker();
+		_colorWheel.SetColor(_playerIcColor);
+		_colorWheel.ColorChanged += OnColorWheelChanged;
+		var active = Core.GameManager.Instance?.ActiveCharacter;
+		if (active != null) _colorWheel.SetPreviewName(active.CharacterName);
+		vbox.AddChild(_colorWheel);
 
 		// ─── Text Size section with slider + buttons ─────────
 		vbox.AddChild(UITheme.CreateSeparator());
@@ -937,18 +922,11 @@ public partial class ChatPanel : Control
 		vbox.AddChild(closeBtn);
 	}
 
-	private void OnColorHexSubmitted(string hex)
+	private void OnColorWheelChanged(Color color)
 	{
-		hex = hex.Trim();
-		if (!hex.StartsWith('#')) hex = "#" + hex;
-		if (hex.Length == 7 && Color.HtmlIsValid(hex))
-		{
-			_playerIcColor = new Color(hex);
-			_colorPreviewSwatch.Color = _playerIcColor;
-			_colorPreviewName.AddThemeColorOverride("font_color", _playerIcColor);
-			RefreshMessages();
-		}
-		_colorHexInput.ReleaseFocus();
+		_playerIcColor = color;
+		RefreshMessages();
+		ResetIdle();
 	}
 
 	// ═════════════════════════════════════════════════════════
@@ -977,13 +955,6 @@ public partial class ChatPanel : Control
 			}
 			// Consume all keys while emote textarea focused
 			GetViewport().SetInputAsHandled();
-			return;
-		}
-
-		// Color hex input: Escape releases focus
-		if (_colorHexInput?.HasFocus() == true)
-		{
-			if (key.Keycode == Key.Escape) { _colorHexInput.ReleaseFocus(); GetViewport().SetInputAsHandled(); }
 			return;
 		}
 
@@ -1026,6 +997,14 @@ public partial class ChatPanel : Control
 			else ToggleCollapse();
 			GetViewport().SetInputAsHandled();
 		}
+		else if (key.Keycode == Key.Tab)
+		{
+			// Tab when chat not focused: focus chat + cycle verb
+			CycleVerb();
+			if (_collapsed) ToggleCollapse();
+			_chatInput.GrabFocus();
+			GetViewport().SetInputAsHandled();
+		}
 	}
 
 	// ═════════════════════════════════════════════════════════
@@ -1053,18 +1032,11 @@ public partial class ChatPanel : Control
 
 		AddMessage(senderName, text, type, _playerIcColor);
 
-		// Chat bubble for IC messages
-		if (type != MsgType.Ooc && type != MsgType.System)
+		// Chat bubble — only for Say
+		if (type == MsgType.Say)
 		{
-			string bubbleText = type switch
-			{
-				MsgType.Say => $"\"{text}\"",
-				MsgType.Yell => text.ToUpper(),
-				MsgType.Emote => $"*{(text.Length > 40 ? text[..40] + "..." : text)}*",
-				MsgType.Whisper => $"\"{text}\"",
-				_ => text
-			};
-			ShowBubble(bubbleText);
+			string bubbleText = text.Length > 20 ? text[..20] + "..." : text;
+			ShowBubble($"\"{bubbleText}\"");
 		}
 
 		_chatInput.Text = "";
@@ -1079,13 +1051,6 @@ public partial class ChatPanel : Control
 		var player = Core.GameManager.Instance?.ActiveCharacter;
 		string senderName = player?.CharacterName ?? "You";
 		AddMessage(senderName, text, MsgType.Emote, _playerIcColor);
-
-		// Bubble: show first quoted speech, or truncated emote
-		var quoteMatch = System.Text.RegularExpressions.Regex.Match(text, "\"(.+?)\"");
-		if (quoteMatch.Success)
-			ShowBubble($"\"{quoteMatch.Groups[1].Value}\"");
-		else
-			ShowBubble($"*{(text.Length > 40 ? text[..40] + "..." : text)}*");
 
 		_emoteTextarea.Text = "";
 	}
@@ -1320,11 +1285,24 @@ public partial class ChatPanel : Control
 		if (ChatBubbleLabel == null) return;
 		ChatBubbleLabel.Text = text;
 		ChatBubbleLabel.Visible = true;
-		// Also show the parent PanelContainer (BubbleBg)
-		var parent = ChatBubbleLabel.GetParent<Control>();
-		if (parent != null) { parent.Visible = true; parent.Modulate = Colors.White; }
 		ChatBubbleLabel.Modulate = Colors.White;
+
+		if (ChatBubbleBg != null)
+		{
+			ChatBubbleBg.Visible = true;
+			ChatBubbleBg.Modulate = Colors.White;
+			// Center after layout settles
+			CallDeferred(nameof(CenterBubble));
+		}
+
 		_bubbleTimer = 4f;
+	}
+
+	private void CenterBubble()
+	{
+		if (ChatBubbleBg == null) return;
+		float bgW = ChatBubbleBg.Size.X;
+		ChatBubbleBg.Position = new Vector2(-bgW / 2f, -64);
 	}
 
 	// ═════════════════════════════════════════════════════════
