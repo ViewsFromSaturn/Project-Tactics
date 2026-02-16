@@ -8,13 +8,8 @@ namespace ProjectTactics.Player;
 /// Handles input, 8-directional movement, basic animation states,
 /// and interaction triggers.
 /// 
-/// Scene structure (CharacterBody2D):
-///   PlayerController (this script)
-///   ├── Sprite2D (or AnimatedSprite2D)
-///   ├── CollisionShape2D
-///   ├── Camera2D (optional, or separate CameraController)
-///   └── InteractionArea (Area2D)
-///       └── CollisionShape2D
+/// IMPORTANT: Checks ChatPanel.IsUiFocused to block movement when
+/// the player is typing in chat, emote box, or settings fields.
 /// </summary>
 public partial class PlayerController : CharacterBody2D
 {
@@ -46,9 +41,7 @@ public partial class PlayerController : CharacterBody2D
 
 	public override void _Ready()
 	{
-		// Try to get animated sprite (optional — works without it)
 		_sprite = GetNodeOrNull<AnimatedSprite2D>("Sprite2D");
-
 		GD.Print("[PlayerController] Ready.");
 	}
 
@@ -56,21 +49,34 @@ public partial class PlayerController : CharacterBody2D
 	{
 		if (!_canMove) return;
 
+		// ═══ CRITICAL: Block movement when UI text fields are focused ═══
+		if (UI.ChatPanel.IsUiFocused)
+		{
+			// Decelerate to stop while typing
+			Velocity = Velocity.MoveToward(Vector2.Zero, (float)(Friction * delta));
+			if (Velocity.Length() < 5f)
+			{
+				Velocity = Vector2.Zero;
+				SetMovementState(MovementState.Idle);
+			}
+			MoveAndSlide();
+			UpdateAnimation();
+			return;
+		}
+
 		Vector2 inputDir = GetInputDirection();
-		_isRunning = Input.IsActionPressed("run"); // Shift key by default
+		_isRunning = Input.IsActionPressed("run");
 
 		float speed = _isRunning ? RunSpeed : WalkSpeed;
 
 		if (inputDir != Vector2.Zero)
 		{
-			// Accelerate toward input direction
 			Velocity = Velocity.MoveToward(inputDir * speed, (float)(Acceleration * delta));
 			UpdateFacingDirection(inputDir);
 			SetMovementState(_isRunning ? MovementState.Running : MovementState.Walking);
 		}
 		else
 		{
-			// Decelerate to stop
 			Velocity = Velocity.MoveToward(Vector2.Zero, (float)(Friction * delta));
 			if (Velocity.Length() < 5f)
 			{
@@ -85,7 +91,8 @@ public partial class PlayerController : CharacterBody2D
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
-		// Interaction (E key or Enter)
+		if (UI.ChatPanel.IsUiFocused) return;
+
 		if (@event.IsActionPressed("interact"))
 		{
 			EmitSignal(SignalName.InteractionTriggered);
@@ -115,8 +122,6 @@ public partial class PlayerController : CharacterBody2D
 	private void UpdateFacingDirection(Vector2 inputDir)
 	{
 		if (inputDir == Vector2.Zero) return;
-
-		// Snap to 4 or 8 directions for sprite animation
 		FacingDirection = inputDir;
 		EmitSignal(SignalName.DirectionChanged, inputDir);
 	}
@@ -128,10 +133,6 @@ public partial class PlayerController : CharacterBody2D
 		EmitSignal(SignalName.MovementStateChanged, (int)newState);
 	}
 
-	/// <summary>
-	/// Update sprite animation based on movement state and facing direction.
-	/// Uses naming convention: "idle_down", "walk_right", "run_up", etc.
-	/// </summary>
 	private void UpdateAnimation()
 	{
 		if (_sprite == null) return;
@@ -147,7 +148,6 @@ public partial class PlayerController : CharacterBody2D
 
 		string animName = $"{stateName}_{directionName}";
 
-		// Only change animation if it exists and is different
 		if (_sprite.SpriteFrames != null &&
 			_sprite.SpriteFrames.HasAnimation(animName) &&
 			_sprite.Animation != animName)
@@ -156,13 +156,8 @@ public partial class PlayerController : CharacterBody2D
 		}
 	}
 
-	/// <summary>
-	/// Convert facing direction vector to animation name suffix.
-	/// Supports 4-directional: up, down, left, right.
-	/// </summary>
 	private string GetDirectionName()
 	{
-		// Use dominant axis for 4-directional sprites
 		if (Mathf.Abs(FacingDirection.X) > Mathf.Abs(FacingDirection.Y))
 		{
 			return FacingDirection.X > 0 ? "right" : "left";
@@ -177,9 +172,6 @@ public partial class PlayerController : CharacterBody2D
 	//  PUBLIC CONTROL
 	// ═════════════════════════════════════════════════════════════
 
-	/// <summary>
-	/// Enable or disable player movement (for menus, cutscenes, combat).
-	/// </summary>
 	public void SetMovementEnabled(bool enabled)
 	{
 		_canMove = enabled;
@@ -190,17 +182,11 @@ public partial class PlayerController : CharacterBody2D
 		}
 	}
 
-	/// <summary>
-	/// Teleport player to a position.
-	/// </summary>
 	public void TeleportTo(Vector2 position)
 	{
 		GlobalPosition = position;
 	}
 
-	/// <summary>
-	/// Get the interaction area (for detecting NPCs, doors, etc).
-	/// </summary>
 	public Area2D GetInteractionArea()
 	{
 		return GetNodeOrNull<Area2D>("InteractionArea");

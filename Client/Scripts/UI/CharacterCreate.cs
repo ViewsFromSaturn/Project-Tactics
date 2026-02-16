@@ -5,8 +5,8 @@ using System.Text.Json;
 namespace ProjectTactics.UI;
 
 /// <summary>
-/// Character Creation Wizard - 3 steps: Name → City → Bio.
-/// Saves to Flask backend via ApiClient.
+/// Character Creation Wizard — 3 steps: Name → City → Bio.
+/// Visual style matches HUD v4 mockup.
 /// </summary>
 public partial class CharacterCreate : Control
 {
@@ -15,7 +15,6 @@ public partial class CharacterCreate : Control
 	private string _city = "";
 	private string _bio = "";
 
-	// UI references
 	private VBoxContainer _stepContainer;
 	private Label _titleLabel;
 	private Label _stepLabel;
@@ -26,9 +25,9 @@ public partial class CharacterCreate : Control
 
 	// Step 2
 	private string _selectedCity = "";
-	private Button _lumereBtn;
-	private Button _praevenBtn;
-	private Button _caldrisBtn;
+	private PanelContainer _lumerePanel;
+	private PanelContainer _praevenPanel;
+	private PanelContainer _caldrisPanel;
 
 	// Step 3
 	private TextEdit _bioInput;
@@ -43,46 +42,45 @@ public partial class CharacterCreate : Control
 
 	private void BuildUI()
 	{
-		var bg = new ColorRect();
-		bg.Color = new Color("1a1a2e");
-		bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-		AddChild(bg);
+		AddChild(UITheme.CreateBackground());
 
 		var mainVbox = new VBoxContainer();
 		mainVbox.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-		mainVbox.AddThemeConstantOverride("separation", 10);
+		mainVbox.AddThemeConstantOverride("separation", 6);
 		mainVbox.OffsetLeft = 60;
 		mainVbox.OffsetRight = -60;
 		mainVbox.OffsetTop = 40;
 		mainVbox.OffsetBottom = -40;
 		AddChild(mainVbox);
 
-		_titleLabel = CreateLabel("CHARACTER CREATION", 32, "E87722");
-		_titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_titleLabel = UITheme.CreateTitle("CHARACTER CREATION", 28);
+		_titleLabel.AddThemeColorOverride("font_color", UITheme.AccentOrange);
 		mainVbox.AddChild(_titleLabel);
 
-		_stepLabel = CreateLabel("Step 1 of 3", 14, "888888");
+		// Step indicator
+		_stepLabel = UITheme.CreateDim("Step 1 of 3", 12);
 		_stepLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		mainVbox.AddChild(_stepLabel);
 
-		// Separator
-		var sep = new HSeparator();
-		mainVbox.AddChild(sep);
+		mainVbox.AddChild(UITheme.CreateSpacer(4));
 
 		// Error label
-		_errorLabel = CreateLabel("", 14, "FF4444");
+		_errorLabel = UITheme.CreateBody("", 13, UITheme.Error);
 		_errorLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		mainVbox.AddChild(_errorLabel);
 
-		// Step content container
+		// Step content (centered)
 		var center = new CenterContainer();
 		center.SizeFlagsVertical = SizeFlags.ExpandFill;
 		mainVbox.AddChild(center);
 
 		_stepContainer = new VBoxContainer();
 		_stepContainer.CustomMinimumSize = new Vector2(500, 300);
-		_stepContainer.AddThemeConstantOverride("separation", 12);
+		_stepContainer.AddThemeConstantOverride("separation", 10);
 		center.AddChild(_stepContainer);
+
+		// Version
+		AddChild(UITheme.CreateVersionLabel());
 	}
 
 	// ═════════════════════════════════════════════════════════
@@ -95,7 +93,6 @@ public partial class CharacterCreate : Control
 		_stepLabel.Text = $"Step {step} of 3";
 		_errorLabel.Text = "";
 
-		// Clear step container
 		foreach (var child in _stepContainer.GetChildren())
 			child.QueueFree();
 
@@ -111,33 +108,29 @@ public partial class CharacterCreate : Control
 
 	private void BuildStep1()
 	{
-		var header = CreateLabel("Choose Your Name", 22, "FFFFFF");
-		header.HorizontalAlignment = HorizontalAlignment.Center;
+		var header = UITheme.CreateTitle("Choose Your Name", 20);
 		_stepContainer.AddChild(header);
 
-		var desc = CreateLabel("This will be your character's name. Must be unique.", 14, "888888");
+		var desc = UITheme.CreateDim("This will be your character's name in the world.", 13);
 		desc.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(desc);
 
-		var spacer = new Control();
-		spacer.CustomMinimumSize = new Vector2(0, 20);
-		_stepContainer.AddChild(spacer);
+		_stepContainer.AddChild(UITheme.CreateSpacer(16));
 
-		_nameInput = new LineEdit();
-		_nameInput.PlaceholderText = "Enter character name...";
+		_nameInput = UITheme.CreateInput("Enter character name...", fontSize: 16);
 		_nameInput.Text = _charName;
 		_nameInput.MaxLength = 30;
-		_nameInput.CustomMinimumSize = new Vector2(400, 40);
-		_nameInput.AddThemeFontSizeOverride("font_size", 18);
-		StyleInput(_nameInput);
+		_nameInput.CustomMinimumSize = new Vector2(400, 44);
 		_stepContainer.AddChild(_nameInput);
+
+		_stepContainer.AddChild(UITheme.CreateSpacer(12));
 
 		var btnRow = new HBoxContainer();
 		btnRow.Alignment = BoxContainer.AlignmentMode.Center;
-		btnRow.AddThemeConstantOverride("separation", 20);
+		btnRow.AddThemeConstantOverride("separation", 16);
 		_stepContainer.AddChild(btnRow);
 
-		var backBtn = CreateStyledButton("← BACK", true);
+		var backBtn = UITheme.CreateGhostButton("← Back", 13);
 		backBtn.Pressed += () =>
 		{
 			var gm = Core.GameManager.Instance;
@@ -145,13 +138,14 @@ public partial class CharacterCreate : Control
 		};
 		btnRow.AddChild(backBtn);
 
-		var nextBtn = CreateStyledButton("NEXT →");
+		var nextBtn = UITheme.CreatePrimaryButton("NEXT →", 14);
+		nextBtn.CustomMinimumSize = new Vector2(140, 42);
 		nextBtn.Pressed += () =>
 		{
 			_charName = _nameInput.Text.Trim();
 			if (_charName.Length < 2 || _charName.Length > 30)
 			{
-				_errorLabel.Text = "Name must be 2-30 characters.";
+				_errorLabel.Text = "Name must be 2–30 characters.";
 				return;
 			}
 			ShowStep(2);
@@ -165,45 +159,43 @@ public partial class CharacterCreate : Control
 
 	private void BuildStep2()
 	{
-		var header = CreateLabel("Choose Your Starting City", 22, "FFFFFF");
-		header.HorizontalAlignment = HorizontalAlignment.Center;
+		var header = UITheme.CreateTitle("Choose Your Starting City", 20);
 		_stepContainer.AddChild(header);
 
-		var desc = CreateLabel("This is where your journey begins.", 14, "888888");
+		var desc = UITheme.CreateDim("This is where your journey begins.", 13);
 		desc.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(desc);
 
-		var spacer = new Control();
-		spacer.CustomMinimumSize = new Vector2(0, 10);
-		_stepContainer.AddChild(spacer);
+		_stepContainer.AddChild(UITheme.CreateSpacer(8));
 
-		_lumereBtn = CreateCityButton("Lumere", "The City of Light — Capital of the Empire");
-		_lumereBtn.Pressed += () => SelectCity("Lumere", _lumereBtn);
-		_stepContainer.AddChild(_lumereBtn);
+		// City cards
+		_lumerePanel = CreateCityCard("Lumere", "The City of Light — Capital of the Empire");
+		_stepContainer.AddChild(_lumerePanel);
 
-		_praevenBtn = CreateCityButton("Praeven", "The City Before the Fall — Twin Seat of the Empire");
-		_praevenBtn.Pressed += () => SelectCity("Praeven", _praevenBtn);
-		_stepContainer.AddChild(_praevenBtn);
+		_praevenPanel = CreateCityCard("Praeven", "The City Before the Fall — Twin Seat of the Empire");
+		_stepContainer.AddChild(_praevenPanel);
 
-		_caldrisBtn = CreateCityButton("Caldris", "The Free City — Outside the Empire");
-		_caldrisBtn.Pressed += () => SelectCity("Caldris", _caldrisBtn);
-		_stepContainer.AddChild(_caldrisBtn);
+		_caldrisPanel = CreateCityCard("Caldris", "The Free City — Outside the Empire");
+		_stepContainer.AddChild(_caldrisPanel);
 
 		// Restore selection
-		if (_selectedCity == "Lumere") HighlightCity(_lumereBtn);
-		else if (_selectedCity == "Praeven") HighlightCity(_praevenBtn);
-		else if (_selectedCity == "Caldris") HighlightCity(_caldrisBtn);
+		if (_selectedCity == "Lumere") UITheme.SetPanelSelected(_lumerePanel, true);
+		else if (_selectedCity == "Praeven") UITheme.SetPanelSelected(_praevenPanel, true);
+		else if (_selectedCity == "Caldris") UITheme.SetPanelSelected(_caldrisPanel, true);
+
+		_stepContainer.AddChild(UITheme.CreateSpacer(8));
 
 		var btnRow = new HBoxContainer();
 		btnRow.Alignment = BoxContainer.AlignmentMode.Center;
-		btnRow.AddThemeConstantOverride("separation", 20);
+		btnRow.AddThemeConstantOverride("separation", 16);
 		_stepContainer.AddChild(btnRow);
 
-		var backBtn = CreateStyledButton("← BACK", true);
+		var backBtn = UITheme.CreateGhostButton("← Back", 13);
 		backBtn.Pressed += () => ShowStep(1);
 		btnRow.AddChild(backBtn);
 
-		var nextBtn = CreateStyledButton("NEXT →");
+		var nextBtn = UITheme.CreatePrimaryButton("NEXT →", 14);
+		nextBtn.CustomMinimumSize = new Vector2(140, 42);
 		nextBtn.Pressed += () =>
 		{
 			if (string.IsNullOrEmpty(_selectedCity))
@@ -217,90 +209,62 @@ public partial class CharacterCreate : Control
 		btnRow.AddChild(nextBtn);
 	}
 
-	private void SelectCity(string city, Button btn)
+	private PanelContainer CreateCityCard(string name, string subtitle)
+	{
+		var panel = UITheme.CreatePanel();
+		panel.CustomMinimumSize = new Vector2(480, 0);
+
+		var vbox = new VBoxContainer();
+		vbox.AddThemeConstantOverride("separation", 2);
+		panel.AddChild(vbox);
+
+		var nameLabel = UITheme.CreateTitle(name, 16);
+		nameLabel.HorizontalAlignment = HorizontalAlignment.Left;
+		vbox.AddChild(nameLabel);
+
+		var subLabel = UITheme.CreateDim(subtitle, 12);
+		vbox.AddChild(subLabel);
+
+		// Make the whole panel clickable via gui_input
+		panel.GuiInput += (InputEvent ev) =>
+		{
+			if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+			{
+				SelectCity(name);
+			}
+		};
+		panel.MouseDefaultCursorShape = CursorShape.PointingHand;
+
+		return panel;
+	}
+
+	private void SelectCity(string city)
 	{
 		_selectedCity = city;
-		// Reset all
-		ResetCityButton(_lumereBtn);
-		ResetCityButton(_praevenBtn);
-		ResetCityButton(_caldrisBtn);
-		// Highlight selected
-		HighlightCity(btn);
-	}
-
-	private void HighlightCity(Button btn)
-	{
-		var style = new StyleBoxFlat();
-		style.BgColor = new Color("2a2a3e");
-		style.SetCornerRadiusAll(8);
-		style.SetContentMarginAll(12);
-		style.BorderColor = new Color("E87722");
-		style.BorderWidthBottom = 2;
-		style.BorderWidthLeft = 2;
-		style.BorderWidthRight = 2;
-		style.BorderWidthTop = 2;
-		btn.AddThemeStyleboxOverride("normal", style);
-	}
-
-	private void ResetCityButton(Button btn)
-	{
-		if (btn == null) return;
-		var style = new StyleBoxFlat();
-		style.BgColor = new Color("2a2a3e");
-		style.SetCornerRadiusAll(8);
-		style.SetContentMarginAll(12);
-		style.BorderColor = new Color("444455");
-		style.BorderWidthBottom = 1;
-		style.BorderWidthLeft = 1;
-		style.BorderWidthRight = 1;
-		style.BorderWidthTop = 1;
-		btn.AddThemeStyleboxOverride("normal", style);
-	}
-
-	private Button CreateCityButton(string name, string subtitle)
-	{
-		var btn = new Button();
-		btn.Text = $"{name}\n{subtitle}";
-		btn.CustomMinimumSize = new Vector2(400, 50);
-		btn.AddThemeFontSizeOverride("font_size", 16);
-		btn.AddThemeColorOverride("font_color", Colors.White);
-		ResetCityButton(btn);
-		return btn;
+		UITheme.SetPanelSelected(_lumerePanel, city == "Lumere");
+		UITheme.SetPanelSelected(_praevenPanel, city == "Praeven");
+		UITheme.SetPanelSelected(_caldrisPanel, city == "Caldris");
 	}
 
 	// ─── STEP 3: BIO + CREATE ────────────────────────────────
 
 	private void BuildStep3()
 	{
-		var header = CreateLabel("Character Background", 22, "FFFFFF");
-		header.HorizontalAlignment = HorizontalAlignment.Center;
+		var header = UITheme.CreateTitle("Character Background", 20);
 		_stepContainer.AddChild(header);
 
-		var desc = CreateLabel("Write a brief backstory for your character. (Optional)", 14, "888888");
+		var desc = UITheme.CreateDim("Write a brief backstory for your character. (Optional)", 13);
 		desc.HorizontalAlignment = HorizontalAlignment.Center;
 		_stepContainer.AddChild(desc);
 
-		_bioInput = new TextEdit();
-		_bioInput.PlaceholderText = "A traveler arriving in the city...";
-		_bioInput.Text = _bio;
-		_bioInput.CustomMinimumSize = new Vector2(500, 120);
-		_bioInput.WrapMode = TextEdit.LineWrappingMode.Boundary;
-		_bioInput.AddThemeFontSizeOverride("font_size", 14);
+		_stepContainer.AddChild(UITheme.CreateSpacer(6));
 
-		var bioStyle = new StyleBoxFlat();
-		bioStyle.BgColor = new Color("2a2a3e");
-		bioStyle.SetCornerRadiusAll(6);
-		bioStyle.SetContentMarginAll(8);
-		bioStyle.BorderColor = new Color("555566");
-		bioStyle.BorderWidthBottom = 2;
-		bioStyle.BorderWidthLeft = 2;
-		bioStyle.BorderWidthRight = 2;
-		bioStyle.BorderWidthTop = 2;
-		_bioInput.AddThemeStyleboxOverride("normal", bioStyle);
-		_bioInput.AddThemeColorOverride("font_color", Colors.White);
+		_bioInput = UITheme.CreateTextArea("A traveler arriving in the city...");
+		_bioInput.Text = _bio;
+		_bioInput.CustomMinimumSize = new Vector2(480, 120);
 		_stepContainer.AddChild(_bioInput);
 
-		_charCountLabel = CreateLabel($"{_bio.Length} / 500", 12, "888888");
+		_charCountLabel = UITheme.CreateNumbers($"{_bio.Length} / 500", 11, UITheme.TextDim);
 		_charCountLabel.HorizontalAlignment = HorizontalAlignment.Right;
 		_stepContainer.AddChild(_charCountLabel);
 
@@ -311,20 +275,37 @@ public partial class CharacterCreate : Control
 			_charCountLabel.Text = $"{_bioInput.Text.Length} / 500";
 		};
 
-		// Summary
-		var sep = new HSeparator();
-		_stepContainer.AddChild(sep);
+		// Summary panel
+		_stepContainer.AddChild(UITheme.CreateSpacer(4));
 
-		var summary = CreateLabel($"— SUMMARY —\nName: {_charName}\nCity: {_city}\nStarting Rank: Aspirant", 14, "AAAAAA");
-		_stepContainer.AddChild(summary);
+		var summaryPanel = UITheme.CreatePanel(new Color("0a0a12cc"));
+		summaryPanel.CustomMinimumSize = new Vector2(480, 0);
+		_stepContainer.AddChild(summaryPanel);
+
+		var summaryVbox = new VBoxContainer();
+		summaryVbox.AddThemeConstantOverride("separation", 3);
+		summaryPanel.AddChild(summaryVbox);
+
+		summaryVbox.AddChild(UITheme.CreateDim("SUMMARY", 10));
+
+		var summaryName = UITheme.CreateBody($"Name: {_charName}", 13, UITheme.TextBright);
+		summaryVbox.AddChild(summaryName);
+
+		var summaryCity = UITheme.CreateBody($"City: {_city}", 13, UITheme.Text);
+		summaryVbox.AddChild(summaryCity);
+
+		var summaryRank = UITheme.CreateBody("Starting Rank: Aspirant", 13, UITheme.TextDim);
+		summaryVbox.AddChild(summaryRank);
 
 		// Buttons
+		_stepContainer.AddChild(UITheme.CreateSpacer(6));
+
 		var btnRow = new HBoxContainer();
 		btnRow.Alignment = BoxContainer.AlignmentMode.Center;
-		btnRow.AddThemeConstantOverride("separation", 20);
+		btnRow.AddThemeConstantOverride("separation", 16);
 		_stepContainer.AddChild(btnRow);
 
-		var backBtn = CreateStyledButton("← BACK", true);
+		var backBtn = UITheme.CreateGhostButton("← Back", 13);
 		backBtn.Pressed += () =>
 		{
 			_bio = _bioInput.Text;
@@ -332,7 +313,8 @@ public partial class CharacterCreate : Control
 		};
 		btnRow.AddChild(backBtn);
 
-		var createBtn = CreateStyledButton("CREATE CHARACTER");
+		var createBtn = UITheme.CreatePrimaryButton("CREATE CHARACTER", 14);
+		createBtn.CustomMinimumSize = new Vector2(200, 44);
 		createBtn.Pressed += () => OnCreatePressed(createBtn);
 		btnRow.AddChild(createBtn);
 	}
@@ -370,7 +352,6 @@ public partial class CharacterCreate : Control
 		{
 			GD.Print($"[CharacterCreate] Created {_charName} in slot {slot}");
 
-			// Parse response and load into game
 			using var doc = JsonDocument.Parse(resp.Body);
 			var c = doc.RootElement.GetProperty("character");
 
@@ -404,64 +385,5 @@ public partial class CharacterCreate : Control
 			btn.Disabled = false;
 			btn.Text = "CREATE CHARACTER";
 		}
-	}
-
-	// ═════════════════════════════════════════════════════════
-	//  UI HELPERS
-	// ═════════════════════════════════════════════════════════
-
-	private void StyleInput(LineEdit input)
-	{
-		var style = new StyleBoxFlat();
-		style.BgColor = new Color("2a2a3e");
-		style.SetCornerRadiusAll(6);
-		style.SetContentMarginAll(8);
-		style.BorderColor = new Color("555566");
-		style.BorderWidthBottom = 2;
-		style.BorderWidthLeft = 2;
-		style.BorderWidthRight = 2;
-		style.BorderWidthTop = 2;
-		input.AddThemeStyleboxOverride("normal", style);
-		input.AddThemeColorOverride("font_color", Colors.White);
-		input.AddThemeColorOverride("font_placeholder_color", new Color("666666"));
-	}
-
-	private Label CreateLabel(string text, int size, string color)
-	{
-		var label = new Label();
-		label.Text = text;
-		label.AddThemeColorOverride("font_color", new Color(color));
-		label.AddThemeFontSizeOverride("font_size", size);
-		return label;
-	}
-
-	private Button CreateStyledButton(string text, bool secondary = false)
-	{
-		var btn = new Button();
-		btn.Text = text;
-		btn.CustomMinimumSize = new Vector2(180, 42);
-
-		var styleNormal = new StyleBoxFlat();
-		styleNormal.BgColor = secondary ? new Color("333344") : new Color("E87722");
-		styleNormal.SetCornerRadiusAll(6);
-		styleNormal.SetContentMarginAll(10);
-		btn.AddThemeStyleboxOverride("normal", styleNormal);
-
-		var styleHover = new StyleBoxFlat();
-		styleHover.BgColor = secondary ? new Color("444455") : new Color("FF8833");
-		styleHover.SetCornerRadiusAll(6);
-		styleHover.SetContentMarginAll(10);
-		btn.AddThemeStyleboxOverride("hover", styleHover);
-
-		var stylePressed = new StyleBoxFlat();
-		stylePressed.BgColor = secondary ? new Color("222233") : new Color("CC6611");
-		stylePressed.SetCornerRadiusAll(6);
-		stylePressed.SetContentMarginAll(10);
-		btn.AddThemeStyleboxOverride("pressed", stylePressed);
-
-		btn.AddThemeColorOverride("font_color", Colors.White);
-		btn.AddThemeFontSizeOverride("font_size", 16);
-
-		return btn;
 	}
 }
