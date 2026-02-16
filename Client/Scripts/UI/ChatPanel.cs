@@ -411,6 +411,7 @@ public partial class ChatPanel : Control
 
 		var btn = new Button();
 		btn.Text = label;
+		btn.FocusMode = FocusModeEnum.None;
 		btn.AddThemeFontSizeOverride("font_size", 11);
 		btn.AddThemeColorOverride("font_color", UITheme.TextDim);
 		btn.AddThemeColorOverride("font_hover_color", UITheme.Text);
@@ -544,6 +545,7 @@ public partial class ChatPanel : Control
 		// Verb button
 		_verbBtn = new Button();
 		_verbBtn.Text = "Say ▸";
+		_verbBtn.FocusMode = FocusModeEnum.None;
 		_verbBtn.CustomMinimumSize = new Vector2(80, 0);
 		_verbBtn.AddThemeFontSizeOverride("font_size", 12);
 		_verbBtn.AddThemeColorOverride("font_color", SayColor);
@@ -605,6 +607,7 @@ public partial class ChatPanel : Control
 		_emoteExpandBtn = new Button();
 		_emoteExpandBtn.Text = "✎";
 		_emoteExpandBtn.TooltipText = "Open long-form emote box";
+		_emoteExpandBtn.FocusMode = FocusModeEnum.None;
 		_emoteExpandBtn.CustomMinimumSize = new Vector2(32, 0);
 		_emoteExpandBtn.AddThemeFontSizeOverride("font_size", 11);
 		_emoteExpandBtn.AddThemeColorOverride("font_color", UITheme.TextDim);
@@ -761,6 +764,7 @@ public partial class ChatPanel : Control
 
 		var sendBtn = new Button();
 		sendBtn.Text = "Send Emote";
+		sendBtn.FocusMode = FocusModeEnum.None;
 		sendBtn.AddThemeFontSizeOverride("font_size", 11);
 		sendBtn.AddThemeColorOverride("font_color", EmoteColor);
 		if (UITheme.FontBody != null) sendBtn.AddThemeFontOverride("font", UITheme.FontBody);
@@ -1334,6 +1338,7 @@ public partial class ChatPanel : Control
 
 	private static void ApplyGhostStyle(Button btn)
 	{
+		btn.FocusMode = FocusModeEnum.None;
 		var s = new StyleBoxFlat();
 		s.BgColor = Colors.Transparent;
 		s.SetCornerRadiusAll(3);

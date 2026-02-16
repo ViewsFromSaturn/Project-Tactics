@@ -225,7 +225,7 @@ public partial class OverworldHUD : Control
 		if (UITheme.FontNumbersMedium != null) lbl.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
 		row.AddChild(lbl);
 
-		var track = new PanelContainer();
+		var track = new Panel();
 		track.CustomMinimumSize = new Vector2(BarTrackWidth, 8);
 		track.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 		track.SizeFlagsVertical = SizeFlags.ShrinkCenter;
