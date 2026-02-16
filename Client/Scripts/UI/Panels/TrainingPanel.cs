@@ -34,7 +34,7 @@ public partial class TrainingPanel : WindowPanel
 		BuildConfirmDialog();
 	}
 
-	protected override void OnOpen()
+	public override void OnOpen()
 	{
 		foreach (var child in _trainingContent.GetChildren())
 			child.QueueFree();
