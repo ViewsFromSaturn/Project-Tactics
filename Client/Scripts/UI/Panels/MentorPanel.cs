@@ -4,15 +4,15 @@ namespace ProjectTactics.UI.Panels;
 
 /// <summary>
 /// Mentor / Teaching — active teaching arcs, student/mentor status.
-/// Hotkey: N | Slides: Right
+/// Floating window. Hotkey: N
 /// </summary>
-public partial class MentorPanel : SlidePanel
+public partial class MentorPanel : WindowPanel
 {
     public MentorPanel()
     {
-        PanelTitle = "Mentorship";
-        Direction = SlideDirection.Right;
-        PanelWidth = 360;
+        WindowTitle = "Mentorship";
+        DefaultSize = new Vector2(380, 460);
+        DefaultPosition = new Vector2(300, 100);
     }
 
     protected override void BuildContent(VBoxContainer content)
@@ -23,7 +23,6 @@ public partial class MentorPanel : SlidePanel
         content.AddChild(SectionHeader("Your Status"));
         content.AddChild(UITheme.CreateBody($"Rank: {rank}", 13, UITheme.Text));
 
-        // Determine eligibility
         bool canMentor = rank is "Genin" or "Chunin" or "Warden" or "Jonin" or "Justicar" or "Banneret";
         bool canLearn = rank is not "Jonin" and not "Justicar";
 
@@ -35,14 +34,12 @@ public partial class MentorPanel : SlidePanel
         content.AddChild(UITheme.CreateSpacer(8));
         content.AddChild(ThinSeparator());
 
-        // Active teaching arcs
         content.AddChild(SectionHeader("Active Teaching Arcs"));
         content.AddChild(PlaceholderText("No active teaching arcs."));
 
         content.AddChild(UITheme.CreateSpacer(4));
         content.AddChild(ThinSeparator());
 
-        // Currently learning
         content.AddChild(SectionHeader("Currently Learning"));
         if (canLearn)
             content.AddChild(PlaceholderText("You are not learning any technique. Find a mentor to begin."));
@@ -54,7 +51,6 @@ public partial class MentorPanel : SlidePanel
         content.AddChild(UITheme.CreateSpacer(4));
         content.AddChild(ThinSeparator());
 
-        // Teaching chain reference
         content.AddChild(SectionHeader("Teaching Chain"));
         content.AddChild(ChainRow("Sworn / Levy", "→ teaches →", "Aspirants"));
         content.AddChild(ChainRow("Warden", "→ teaches →", "Sworn"));
@@ -65,11 +61,9 @@ public partial class MentorPanel : SlidePanel
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 4);
-
         row.AddChild(UITheme.CreateBody(mentor, 11, UITheme.TextBright));
         row.AddChild(UITheme.CreateDim(arrow, 10));
         row.AddChild(UITheme.CreateBody(student, 11, UITheme.Text));
-
         return row;
     }
 }

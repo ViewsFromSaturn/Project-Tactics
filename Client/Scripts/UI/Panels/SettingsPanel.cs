@@ -4,15 +4,15 @@ namespace ProjectTactics.UI.Panels;
 
 /// <summary>
 /// Settings — audio, display, keybinds, logout.
-/// Hotkey: Esc (second press) | Slides: Right
+/// Floating window. Hotkey: Esc
 /// </summary>
-public partial class SettingsPanel : SlidePanel
+public partial class SettingsPanel : WindowPanel
 {
     public SettingsPanel()
     {
-        PanelTitle = "Settings";
-        Direction = SlideDirection.Right;
-        PanelWidth = 340;
+        WindowTitle = "Settings";
+        DefaultSize = new Vector2(320, 540);
+        DefaultPosition = new Vector2(500, 60);
     }
 
     protected override void BuildContent(VBoxContainer content)
@@ -40,7 +40,7 @@ public partial class SettingsPanel : SlidePanel
 
         content.AddChild(ThinSeparator());
 
-        // ─── Keybinds Reference ───
+        // ─── Keybinds ───
         content.AddChild(SectionHeader("Keybinds"));
         content.AddChild(KeybindRow("C", "Character Sheet"));
         content.AddChild(KeybindRow("V", "Training"));
@@ -64,18 +64,16 @@ public partial class SettingsPanel : SlidePanel
 
         content.AddChild(UITheme.CreateSpacer(6));
 
-        var logoutBtn = UITheme.CreateSecondaryButton("LOGOUT", 13);
+        var logoutBtn = UITheme.CreateDangerButton("LOGOUT", 13);
         logoutBtn.Pressed += OnLogoutPressed;
         content.AddChild(logoutBtn);
 
         content.AddChild(UITheme.CreateSpacer(4));
 
-        var quitBtn = UITheme.CreateGhostButton("Quit Game", 12, UITheme.Error);
+        var quitBtn = UITheme.CreateGhostButton("Quit Game", 12, UITheme.AccentRed);
         quitBtn.Pressed += () => content.GetTree().Quit();
         content.AddChild(quitBtn);
     }
-
-    // ═══ WIDGET HELPERS ═══
 
     private static HBoxContainer SliderRow(string label, int defaultValue)
     {
@@ -99,11 +97,7 @@ public partial class SettingsPanel : SlidePanel
         valLabel.HorizontalAlignment = HorizontalAlignment.Right;
         row.AddChild(valLabel);
 
-        slider.ValueChanged += (double val) =>
-        {
-            valLabel.Text = $"{(int)val}";
-            // TODO: Apply volume setting
-        };
+        slider.ValueChanged += (double val) => valLabel.Text = $"{(int)val}";
 
         return row;
     }
@@ -119,11 +113,7 @@ public partial class SettingsPanel : SlidePanel
 
         var toggle = new CheckButton();
         toggle.ButtonPressed = defaultOn;
-        toggle.Pressed += () =>
-        {
-            GD.Print($"[Settings] {label} = {toggle.ButtonPressed}");
-            // TODO: Apply setting
-        };
+        toggle.Pressed += () => GD.Print($"[Settings] {label} = {toggle.ButtonPressed}");
         row.AddChild(toggle);
 
         return row;

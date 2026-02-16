@@ -4,15 +4,15 @@ namespace ProjectTactics.UI.Panels;
 
 /// <summary>
 /// Map — zone overview, points of interest.
-/// Hotkey: M | Slides: Left
+/// Floating window. Hotkey: M
 /// </summary>
-public partial class MapPanel : SlidePanel
+public partial class MapPanel : WindowPanel
 {
     public MapPanel()
     {
-        PanelTitle = "Map";
-        Direction = SlideDirection.Left;
-        PanelWidth = 400;
+        WindowTitle = "World Map";
+        DefaultSize = new Vector2(400, 500);
+        DefaultPosition = new Vector2(350, 80);
     }
 
     protected override void BuildContent(VBoxContainer content)
@@ -29,7 +29,7 @@ public partial class MapPanel : SlidePanel
         // Map placeholder
         var mapRect = new ColorRect();
         mapRect.CustomMinimumSize = new Vector2(0, 200);
-        mapRect.Color = new Color(0.05f, 0.05f, 0.08f, 0.8f);
+        mapRect.Color = UITheme.CardBg;
         content.AddChild(mapRect);
 
         var mapLabel = UITheme.CreateDim("Map display will render here.", 12);
@@ -39,7 +39,6 @@ public partial class MapPanel : SlidePanel
         content.AddChild(UITheme.CreateSpacer(8));
         content.AddChild(ThinSeparator());
 
-        // Points of interest
         content.AddChild(SectionHeader("Points of Interest"));
         content.AddChild(PoiRow("Training Grounds", "Practice combat techniques"));
         content.AddChild(PoiRow("City Gate", "Entrance to the overworld"));

@@ -4,19 +4,16 @@ using System.Text.Json;
 namespace ProjectTactics.UI.Panels;
 
 /// <summary>
-/// Training Panel — daily TP allocation screen.
-/// Shows a confirmation popup before each stat point spend.
-/// Each confirmed click calls the server's TrainStat endpoint (server-authoritative).
-/// Hotkey: V | Slides: Right
+/// Training Panel — daily TP allocation with confirmation dialog.
+/// Floating window. Hotkey: V
 /// </summary>
-public partial class TrainingPanel : SlidePanel
+public partial class TrainingPanel : WindowPanel
 {
 	private VBoxContainer _trainingContent;
 	private Label _tpRemainingLabel;
 	private Label _levelLabel;
 	private Label _feedbackLabel;
 
-	// Confirm dialog refs
 	private PanelContainer _confirmDialog;
 	private Label _confirmText;
 	private string _pendingStat;
@@ -25,15 +22,15 @@ public partial class TrainingPanel : SlidePanel
 
 	public TrainingPanel()
 	{
-		PanelTitle = "Training";
-		Direction = SlideDirection.Right;
-		PanelWidth = 340;
+		WindowTitle = "Daily Training";
+		DefaultSize = new Vector2(340, 480);
+		DefaultPosition = new Vector2(60, 120);
 	}
 
 	protected override void BuildContent(VBoxContainer content)
 	{
 		_trainingContent = content;
-		content.AddChild(PlaceholderText("Open with a character loaded to train."));
+		content.AddChild(PlaceholderText("Loading training data..."));
 		BuildConfirmDialog();
 	}
 
@@ -49,14 +46,12 @@ public partial class TrainingPanel : SlidePanel
 			return;
 		}
 
-		// Header info
 		_levelLabel = UITheme.CreateBody($"Character Level: {p.CharacterLevel}", 13, UITheme.Text);
 		_trainingContent.AddChild(_levelLabel);
 
 		_tpRemainingLabel = UITheme.CreateNumbers($"{p.DailyPointsRemaining} TP remaining", 16, UITheme.Accent);
 		_trainingContent.AddChild(_tpRemainingLabel);
 
-		// Feedback label for server responses
 		_feedbackLabel = UITheme.CreateBody("", 11, UITheme.Accent);
 		_trainingContent.AddChild(_feedbackLabel);
 
@@ -64,7 +59,6 @@ public partial class TrainingPanel : SlidePanel
 		_trainingContent.AddChild(ThinSeparator());
 		_trainingContent.AddChild(SectionHeader("Allocate Points"));
 
-		// Stat rows with + buttons
 		AddStatAllocRow("Strength", "strength");
 		AddStatAllocRow("Speed", "speed");
 		AddStatAllocRow("Agility", "agility");
@@ -75,7 +69,6 @@ public partial class TrainingPanel : SlidePanel
 		_trainingContent.AddChild(UITheme.CreateSpacer(8));
 		_trainingContent.AddChild(ThinSeparator());
 
-		// Soft cap info
 		_trainingContent.AddChild(SectionHeader("Soft Cap"));
 		var capInfo = UITheme.CreateBody(
 			"Stats that exceed your lowest stat by 10+ cost more TP.\n" +
@@ -99,7 +92,6 @@ public partial class TrainingPanel : SlidePanel
 		valLabel.CustomMinimumSize = new Vector2(36, 0);
 		row.AddChild(valLabel);
 
-		// Calculate and show cost
 		var costLabel = UITheme.CreateDim(GetCostText(statKey), 10);
 		costLabel.CustomMinimumSize = new Vector2(40, 0);
 		costLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -161,20 +153,13 @@ public partial class TrainingPanel : SlidePanel
 		_confirmDialog.MouseFilter = MouseFilterEnum.Stop;
 		_confirmDialog.ZIndex = 10;
 
-		// Center in panel
 		_confirmDialog.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
 		_confirmDialog.GrowHorizontal = GrowDirection.Both;
 		_confirmDialog.GrowVertical = GrowDirection.Both;
 		_confirmDialog.OffsetLeft = -120; _confirmDialog.OffsetRight = 120;
 		_confirmDialog.OffsetTop = -60; _confirmDialog.OffsetBottom = 60;
 
-		var style = new StyleBoxFlat();
-		style.BgColor = new Color(0.047f, 0.047f, 0.078f, 0.95f);
-		style.SetCornerRadiusAll(8);
-		style.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.5f);
-		style.SetBorderWidthAll(1);
-		style.ContentMarginLeft = 16; style.ContentMarginRight = 16;
-		style.ContentMarginTop = 14; style.ContentMarginBottom = 14;
+		var style = UITheme.CreateCardStyle();
 		_confirmDialog.AddThemeStyleboxOverride("panel", style);
 
 		var vbox = new VBoxContainer();
@@ -201,7 +186,6 @@ public partial class TrainingPanel : SlidePanel
 		confirmBtn.Pressed += ExecuteTrain;
 		btnRow.AddChild(confirmBtn);
 
-		// Add as overlay on top of the panel itself
 		AddChild(_confirmDialog);
 	}
 
@@ -251,7 +235,6 @@ public partial class TrainingPanel : SlidePanel
 
 		if (resp.Success)
 		{
-			// Update local PlayerData from server response
 			using var doc = JsonDocument.Parse(resp.Body);
 			var c = doc.RootElement.GetProperty("character");
 
@@ -266,7 +249,6 @@ public partial class TrainingPanel : SlidePanel
 			p.CurrentHp = c.GetProperty("current_hp").GetInt32();
 			p.CurrentEther = c.GetProperty("current_ether").GetInt32();
 
-			// Rebuild entire panel to refresh all values and costs
 			OnOpen();
 
 			string msg = doc.RootElement.GetProperty("message").GetString();

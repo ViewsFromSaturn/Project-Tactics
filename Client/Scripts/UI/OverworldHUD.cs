@@ -5,9 +5,14 @@ using System.Collections.Generic;
 namespace ProjectTactics.UI;
 
 /// <summary>
-/// Overworld HUD — Identity bar (top-left), quick action icons (bottom-right),
-/// panel manager with slide-in/out and hotkeys, chat bubble on player.
-/// Attach to a Control node inside a CanvasLayer (Layer = 10).
+/// Overworld HUD — Identity bar (top-left), sidebar icon buttons (right edge),
+/// floating window manager (multiple can be open), chat bubble on player.
+///
+/// KEY CHANGES from old version:
+/// - WindowPanel (floating/draggable) replaces SlidePanel (slide-from-edge)
+/// - Multiple windows can be open simultaneously
+/// - Sidebar icons match Taskade mockup Image 2
+/// - Dark/light mode support via UITheme
 /// </summary>
 public partial class OverworldHUD : Control
 {
@@ -26,23 +31,24 @@ public partial class OverworldHUD : Control
 
 	// Idle fade refs
 	private PanelContainer _identityBarPanel;
-	private VBoxContainer _quickActionsContainer;
+	private VBoxContainer _sidebarContainer;
 	private float _hudIdleTimer = 0f;
 	private const float HudIdleTimeout = 8f;
 
-	// ═══ PANEL SYSTEM ═══
-	private readonly Dictionary<string, Panels.SlidePanel> _panels = new();
-	private string _activePanel = null;
+	// ═══ WINDOW SYSTEM (replaces single-panel system) ═══
+	private readonly Dictionary<string, Panels.WindowPanel> _windows = new();
 
-	private readonly List<(string id, string icon, string tooltip, Key hotkey)> _panelDefs = new()
+	// Panel definitions — order matches Taskade mockup sidebar, top to bottom.
+	// Icons loaded from res://Assets/Icons/ (Lucide PNGs).
+	private readonly List<(string id, string iconPath, string tooltip, Key hotkey)> _panelDefs = new()
 	{
-		("charsheet", "C",  "Character Sheet",  Key.C),
-		("training",  "T",  "Training",         Key.V),
-		("journal",   "J",  "Journal",          Key.J),
-		("map",       "M",  "Map",              Key.M),
-		("inventory", "I",  "Inventory",        Key.I),
-		("mentor",    "⚒",  "Mentorship",       Key.N),
-		("settings",  "⚙",  "Settings",         Key.Escape),
+		("journal",   "res://Assets/Icons/icon_chronicle.png",  "Chronicle Keeper  [J]",  Key.J),
+		("charsheet", "res://Assets/Icons/icon_character.png",   "Character Sheet  [C]",   Key.C),
+		("training",  "res://Assets/Icons/icon_training.png",    "Daily Training  [V]",    Key.V),
+		("map",       "res://Assets/Icons/icon_map.png",          "World Map  [M]",          Key.M),
+		("mentor",    "res://Assets/Icons/icon_mentorship.png",  "Mentorship  [N]",        Key.N),
+		("inventory", "res://Assets/Icons/icon_inventory.png",    "Inventory  [I]",          Key.I),
+		("settings",  "res://Assets/Icons/icon_settings.png",    "Settings  [Esc]",        Key.Escape),
 	};
 
 	// Chat bubble (positioned above player sprite)
@@ -54,8 +60,8 @@ public partial class OverworldHUD : Control
 		MouseFilter = MouseFilterEnum.Ignore;
 		SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 		BuildIdentityBar();
-		BuildQuickActions();
-		BuildPanels();
+		BuildSidebar();
+		BuildWindows();
 		HideDebugOverlay();
 		SetupChatBubble();
 	}
@@ -64,15 +70,15 @@ public partial class OverworldHUD : Control
 	{
 		UpdateBars();
 
-		// Idle fade for identity bar and quick actions (matches mockup)
+		// Idle fade for identity bar and sidebar
 		_hudIdleTimer += (float)delta;
 		bool isIdle = _hudIdleTimer > HudIdleTimeout && !ChatPanel.IsUiFocused;
 		float targetAlpha = isIdle ? 0.35f : 1.0f;
 
 		if (_identityBarPanel != null)
 			_identityBarPanel.Modulate = _identityBarPanel.Modulate.Lerp(new Color(1, 1, 1, targetAlpha), (float)delta * 3);
-		if (_quickActionsContainer != null)
-			_quickActionsContainer.Modulate = _quickActionsContainer.Modulate.Lerp(new Color(1, 1, 1, isIdle ? 0.3f : 1f), (float)delta * 3);
+		if (_sidebarContainer != null)
+			_sidebarContainer.Modulate = _sidebarContainer.Modulate.Lerp(new Color(1, 1, 1, isIdle ? 0.3f : 1f), (float)delta * 3);
 	}
 
 	public override void _Input(InputEvent ev)
@@ -84,30 +90,28 @@ public partial class OverworldHUD : Control
 	public override void _UnhandledInput(InputEvent ev)
 	{
 		if (ev is not InputEventKey key || !key.Pressed || key.Echo) return;
-
-		// ═══ CRITICAL: Don't process hotkeys when chat/emote/settings fields are focused ═══
 		if (ChatPanel.IsUiFocused) return;
 
-		// Esc special: close active panel first, then open settings
+		// Esc: close all windows, or open settings if none are open
 		if (key.Keycode == Key.Escape)
 		{
-			if (_activePanel != null && _activePanel != "settings")
+			bool anyOpen = false;
+			foreach (var (_, win) in _windows)
 			{
-				CloseActivePanel();
-				GetViewport().SetInputAsHandled();
-				return;
+				if (win.IsOpen) { win.Close(); anyOpen = true; }
 			}
-			TogglePanel("settings");
+			if (!anyOpen)
+				ToggleWindow("settings");
 			GetViewport().SetInputAsHandled();
 			return;
 		}
 
-		// Other hotkeys
+		// Other hotkeys — toggle individual windows
 		foreach (var (id, _, _, hotkey) in _panelDefs)
 		{
 			if (key.Keycode == hotkey && hotkey != Key.Escape)
 			{
-				TogglePanel(id);
+				ToggleWindow(id);
 				GetViewport().SetInputAsHandled();
 				return;
 			}
@@ -115,22 +119,26 @@ public partial class OverworldHUD : Control
 	}
 
 	// ═════════════════════════════════════════════════════════
-	//  IDENTITY BAR (top-left)
+	//  IDENTITY BAR (top-left) — same structure, themed
 	// ═════════════════════════════════════════════════════════
 
 	private void BuildIdentityBar()
 	{
 		var panel = new PanelContainer();
-		_identityBarPanel = panel;        panel.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
+		_identityBarPanel = panel;
+		panel.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
 		panel.CustomMinimumSize = new Vector2(280, 0);
 		panel.MouseFilter = MouseFilterEnum.Stop;
 
 		var panelStyle = new StyleBoxFlat();
-		panelStyle.BgColor = new Color(0.031f, 0.031f, 0.063f, 0.62f);
-		panelStyle.CornerRadiusBottomRight = 10;
+		panelStyle.BgColor = UITheme.BgPanel;
+		panelStyle.CornerRadiusBottomRight = 12;
 		panelStyle.BorderWidthRight = 1;
 		panelStyle.BorderWidthBottom = 1;
-		panelStyle.BorderColor = UITheme.BorderLight;
+		panelStyle.BorderColor = UITheme.BorderSubtle;
+		panelStyle.ShadowColor = UITheme.Shadow;
+		panelStyle.ShadowSize = 8;
+		panelStyle.ShadowOffset = new Vector2(2, 2);
 		panelStyle.ContentMarginLeft = 12;
 		panelStyle.ContentMarginRight = 18;
 		panelStyle.ContentMarginTop = 8;
@@ -148,7 +156,13 @@ public partial class OverworldHUD : Control
 		topRow.AddThemeConstantOverride("separation", 8);
 		vbox.AddChild(topRow);
 
-		topRow.AddChild(UITheme.CreateBody("⚔", 14, UITheme.Accent));
+		// Crown icon (from Lucide)
+		var crownIcon = new TextureRect();
+		crownIcon.CustomMinimumSize = new Vector2(18, 18);
+		crownIcon.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
+		if (ResourceLoader.Exists("res://Assets/Icons/icon_crown.png"))
+			crownIcon.Texture = GD.Load<Texture2D>("res://Assets/Icons/icon_crown.png");
+		topRow.AddChild(crownIcon);
 
 		_nameLabel = new Label();
 		_nameLabel.Text = "...";
@@ -186,35 +200,31 @@ public partial class OverworldHUD : Control
 		if (UITheme.FontNumbersMedium != null) _tpLabel.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
 		tpBox.AddChild(_tpLabel);
 
-		// Bars
+		// Resource bars
 		var barsVbox = new VBoxContainer();
 		barsVbox.AddThemeConstantOverride("separation", 3);
 		vbox.AddChild(barsVbox);
 
 		(_hpFill, _hpValue) = CreateBar(barsVbox, "HP",
-			new Color("388838"), new Color("48a848"), new Color("58c058"),
-			new Color(0.157f, 0.314f, 0.157f, 0.25f),
-			new Color(0.235f, 0.549f, 0.235f, 0.3f), new Color(0.282f, 0.659f, 0.282f, 0.75f));
+			new Color("B03030"), new Color("E04040"), new Color("F06060"));
 
 		(_staFill, _staValue) = CreateBar(barsVbox, "STA",
-			new Color("a07828"), new Color("c89838"), new Color("d8a840"),
-			new Color(0.471f, 0.353f, 0.118f, 0.2f),
-			new Color(0.706f, 0.549f, 0.196f, 0.25f), new Color(0.784f, 0.596f, 0.22f, 0.65f));
+			new Color("C08020"), new Color("E8A030"), new Color("F0B848"));
 
 		(_ethFill, _ethValue) = CreateBar(barsVbox, "ETH",
-			new Color("3060a0"), new Color("4888d0"), new Color("58a0e0"),
-			new Color(0.157f, 0.235f, 0.471f, 0.2f),
-			new Color(0.235f, 0.431f, 0.745f, 0.25f), new Color(0.282f, 0.533f, 0.816f, 0.65f));
+			new Color("3060A0"), new Color("4080D0"), new Color("5898E0"));
 	}
 
 	private (TextureRect fill, Label value) CreateBar(VBoxContainer parent, string label,
-		Color fillColorStart, Color fillColorMid, Color fillColorEnd,
-		Color trackBg, Color trackBorder, Color textColor)
+		Color fillColorStart, Color fillColorMid, Color fillColorEnd)
 	{
 		var row = new HBoxContainer();
 		row.AddThemeConstantOverride("separation", 6);
 		row.CustomMinimumSize = new Vector2(0, 14);
 		parent.AddChild(row);
+
+		// Bar label color matches the fill
+		Color textColor = fillColorMid;
 
 		var lbl = new Label();
 		lbl.Text = label;
@@ -231,24 +241,21 @@ public partial class OverworldHUD : Control
 		track.SizeFlagsVertical = SizeFlags.ShrinkCenter;
 
 		var trackStyle = new StyleBoxFlat();
-		trackStyle.BgColor = trackBg;
+		trackStyle.BgColor = UITheme.CardBg;
 		trackStyle.SetCornerRadiusAll(2);
-		trackStyle.BorderColor = trackBorder;
+		trackStyle.BorderColor = UITheme.BorderSubtle;
 		trackStyle.SetBorderWidthAll(1);
 		track.AddThemeStyleboxOverride("panel", trackStyle);
 		row.AddChild(track);
 
-		// Gradient fill using TextureRect + GradientTexture1D
+		// Gradient fill
 		var fill = new TextureRect();
 		fill.CustomMinimumSize = new Vector2(0, 6);
 		fill.SizeFlagsVertical = SizeFlags.ShrinkCenter;
 		fill.StretchMode = TextureRect.StretchModeEnum.Scale;
 		fill.SetAnchorsAndOffsetsPreset(LayoutPreset.LeftWide);
-		fill.OffsetTop = 1;
-		fill.OffsetBottom = -1;
-		fill.OffsetLeft = 1;
+		fill.OffsetTop = 1; fill.OffsetBottom = -1; fill.OffsetLeft = 1;
 
-		// Create gradient: start → mid → end (like the mockup's linear-gradient)
 		var gradient = new Gradient();
 		gradient.SetColor(0, fillColorStart);
 		gradient.AddPoint(0.6f, fillColorMid);
@@ -260,10 +267,10 @@ public partial class OverworldHUD : Control
 		fill.Texture = gradTex;
 		track.AddChild(fill);
 
-		// Shine overlay (top highlight like mockup's ::after)
+		// Shine overlay
 		var shine = new ColorRect();
 		shine.SetAnchorsAndOffsetsPreset(LayoutPreset.TopWide);
-		shine.OffsetBottom = 3; // 40% of bar height
+		shine.OffsetBottom = 3;
 		shine.OffsetLeft = 1;
 		shine.Color = new Color(1f, 1f, 1f, 0.12f);
 		shine.MouseFilter = MouseFilterEnum.Ignore;
@@ -282,111 +289,132 @@ public partial class OverworldHUD : Control
 	}
 
 	// ═════════════════════════════════════════════════════════
-	//  QUICK ACTION ICONS (bottom-right, vertical stack)
+	//  SIDEBAR (right edge — vertical icon buttons)
 	// ═════════════════════════════════════════════════════════
 
-	private void BuildQuickActions()
+	private void BuildSidebar()
 	{
-		var vbox = new VBoxContainer();
-		_quickActionsContainer = vbox;
-		vbox.AddThemeConstantOverride("separation", 4);
-		vbox.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomRight);
-		vbox.GrowHorizontal = GrowDirection.Begin;
-		vbox.GrowVertical = GrowDirection.Begin;
-		vbox.OffsetRight = -12;
-		vbox.OffsetBottom = -12;
-		vbox.OffsetLeft = -44;
-		vbox.OffsetTop = -((32 + 4) * _panelDefs.Count);
-		AddChild(vbox);
+		// Container strip along right edge
+		var strip = new PanelContainer();
+		strip.SetAnchorsAndOffsetsPreset(LayoutPreset.RightWide);
+		strip.CustomMinimumSize = new Vector2(56, 0);
+		strip.OffsetLeft = -56;
+		strip.MouseFilter = MouseFilterEnum.Stop;
 
-		foreach (var (id, icon, tooltip, hotkey) in _panelDefs)
+		// Sidebar background
+		var stripStyle = new StyleBoxFlat();
+		stripStyle.BgColor = UITheme.BgSidebar;
+		stripStyle.BorderWidthLeft = 1;
+		stripStyle.BorderColor = UITheme.BorderSubtle;
+		stripStyle.ContentMarginTop = 12;
+		stripStyle.ContentMarginBottom = 12;
+		strip.AddThemeStyleboxOverride("panel", stripStyle);
+		strip.MouseEntered += () => _hudIdleTimer = 0f;
+		AddChild(strip);
+
+		var vbox = new VBoxContainer();
+		_sidebarContainer = vbox;
+		vbox.AddThemeConstantOverride("separation", 4);
+		vbox.Alignment = BoxContainer.AlignmentMode.Center;
+		strip.AddChild(vbox);
+
+		foreach (var (id, iconPath, tooltip, _) in _panelDefs)
 		{
-			string hotkeyStr = hotkey == Key.Escape ? "Esc" : hotkey.ToString();
-			var btn = CreateIconButton(icon, $"{tooltip}  [{hotkeyStr}]");
-			btn.Pressed += () => TogglePanel(id);
+			var btn = CreateIconButton(iconPath, tooltip);
+			btn.Pressed += () => ToggleWindow(id);
 			vbox.AddChild(btn);
 		}
 	}
 
-	private Button CreateIconButton(string label, string tooltip)
+	/// <summary>
+	/// Creates a 44x44 icon button with a Lucide PNG texture inside.
+	/// Matches Taskade mockup: rounded square, light/dark bg, centered icon.
+	/// </summary>
+	private Button CreateIconButton(string iconPath, string tooltip)
 	{
 		var btn = new Button();
-		btn.Text = label;
 		btn.TooltipText = tooltip;
-		btn.CustomMinimumSize = new Vector2(32, 32);
+		btn.CustomMinimumSize = new Vector2(44, 44);
 		btn.MouseFilter = MouseFilterEnum.Stop;
 
-		btn.AddThemeFontSizeOverride("font_size", 13);
-		btn.AddThemeColorOverride("font_color", UITheme.TextDim);
-		btn.AddThemeColorOverride("font_hover_color", UITheme.TextBright);
-		if (UITheme.FontTitleMedium != null) btn.AddThemeFontOverride("font", UITheme.FontTitleMedium);
+		// Clear any text
+		btn.Text = "";
 
+		// Style: rounded square matching sidebar mockup
 		var style = new StyleBoxFlat();
-		style.BgColor = new Color(0.031f, 0.031f, 0.063f, 0.62f);
-		style.SetCornerRadiusAll(5);
-		style.BorderColor = UITheme.BorderLight;
+		style.BgColor = UITheme.BgIconBtn;
+		style.SetCornerRadiusAll(10);
+		style.BorderColor = UITheme.BorderSubtle;
 		style.SetBorderWidthAll(1);
 		btn.AddThemeStyleboxOverride("normal", style);
 
 		var hover = (StyleBoxFlat)style.Duplicate();
-		hover.BgColor = new Color(0.07f, 0.07f, 0.12f, 0.8f);
-		hover.BorderColor = UITheme.Border;
+		hover.BgColor = UITheme.BgIconBtnActive;
+		hover.BorderColor = UITheme.BorderMedium;
 		btn.AddThemeStyleboxOverride("hover", hover);
 
 		var press = (StyleBoxFlat)style.Duplicate();
-		press.BgColor = new Color(0.04f, 0.04f, 0.08f, 0.9f);
+		press.BgColor = UITheme.IsDarkMode ? UITheme.BorderSubtle : new Color("D8D8DC");
 		btn.AddThemeStyleboxOverride("pressed", press);
+
+		// Load icon texture
+		if (ResourceLoader.Exists(iconPath))
+		{
+			var tex = GD.Load<Texture2D>(iconPath);
+			if (tex != null)
+			{
+				btn.Icon = tex;
+				btn.IconAlignment = HorizontalAlignment.Center;
+				btn.ExpandIcon = true;
+				// Fit icon inside button with padding
+				btn.AddThemeConstantOverride("icon_max_width", 22);
+			}
+		}
+		else
+		{
+			GD.PrintErr($"[OverworldHUD] Icon not found: {iconPath}");
+			btn.Text = "?";
+			btn.AddThemeFontSizeOverride("font_size", 16);
+			btn.AddThemeColorOverride("font_color", UITheme.TextSecondary);
+		}
 
 		return btn;
 	}
 
 	// ═════════════════════════════════════════════════════════
-	//  PANEL MANAGEMENT
+	//  WINDOW MANAGEMENT (multiple can be open)
 	// ═════════════════════════════════════════════════════════
 
-	private void BuildPanels()
+	private void BuildWindows()
 	{
-		RegisterPanel("charsheet", new Panels.CharacterSheetPanel());
-		RegisterPanel("training",  new Panels.TrainingPanel());
-		RegisterPanel("journal",   new Panels.JournalPanel());
-		RegisterPanel("map",       new Panels.MapPanel());
-		RegisterPanel("inventory", new Panels.InventoryPanel());
-		RegisterPanel("mentor",    new Panels.MentorPanel());
-		RegisterPanel("settings",  new Panels.SettingsPanel());
+		RegisterWindow("charsheet", new Panels.CharacterSheetPanel());
+		RegisterWindow("training",  new Panels.TrainingPanel());
+		RegisterWindow("journal",   new Panels.JournalPanel());
+		RegisterWindow("map",       new Panels.MapPanel());
+		RegisterWindow("inventory", new Panels.InventoryPanel());
+		RegisterWindow("mentor",    new Panels.MentorPanel());
+		RegisterWindow("settings",  new Panels.SettingsPanel());
 	}
 
-	private void RegisterPanel(string id, Panels.SlidePanel panel)
+	private void RegisterWindow(string id, Panels.WindowPanel window)
 	{
-		_panels[id] = panel;
-		AddChild(panel);
+		_windows[id] = window;
+		AddChild(window);
 	}
 
-	private void TogglePanel(string id)
+	/// <summary>
+	/// Toggle a floating window. Multiple can be open at once.
+	/// If already open, close it. If closed, open it.
+	/// </summary>
+	private void ToggleWindow(string id)
 	{
-		if (!_panels.ContainsKey(id)) return;
+		if (!_windows.ContainsKey(id)) return;
 
-		if (_activePanel == id)
-		{
-			_panels[id].Close();
-			_activePanel = null;
-		}
+		var win = _windows[id];
+		if (win.IsOpen)
+			win.Close();
 		else
-		{
-			if (_activePanel != null && _panels.ContainsKey(_activePanel))
-				_panels[_activePanel].Close();
-
-			_panels[id].Open();
-			_activePanel = id;
-		}
-	}
-
-	private void CloseActivePanel()
-	{
-		if (_activePanel != null && _panels.ContainsKey(_activePanel))
-		{
-			_panels[_activePanel].Close();
-			_activePanel = null;
-		}
+			win.Open();
 	}
 
 	// ═════════════════════════════════════════════════════════
@@ -395,7 +423,6 @@ public partial class OverworldHUD : Control
 
 	private void SetupChatBubble()
 	{
-		// Find ChatPanel sibling and link the bubble label
 		CallDeferred(nameof(LinkChatBubble));
 	}
 
@@ -415,16 +442,18 @@ public partial class OverworldHUD : Control
 			_chatBubble.Visible = false;
 			_chatBubble.HorizontalAlignment = HorizontalAlignment.Center;
 			_chatBubble.AddThemeFontSizeOverride("font_size", 12);
-			_chatBubble.AddThemeColorOverride("font_color", new Color("d4d2cc"));
+			_chatBubble.AddThemeColorOverride("font_color", UITheme.Text);
 			if (UITheme.FontBody != null) _chatBubble.AddThemeFontOverride("font", UITheme.FontBody);
 
-			// Background style
 			_chatBubbleBg = new PanelContainer();
 			var bgStyle = new StyleBoxFlat();
-			bgStyle.BgColor = new Color(0.039f, 0.039f, 0.071f, 0.82f);
-			bgStyle.SetCornerRadiusAll(6);
-			bgStyle.BorderColor = new Color(0.314f, 0.333f, 0.392f, 0.25f);
+			bgStyle.BgColor = UITheme.BgPanel;
+			bgStyle.SetCornerRadiusAll(8);
+			bgStyle.BorderColor = UITheme.BorderSubtle;
 			bgStyle.SetBorderWidthAll(1);
+			bgStyle.ShadowColor = UITheme.Shadow;
+			bgStyle.ShadowSize = 4;
+			bgStyle.ShadowOffset = new Vector2(0, 2);
 			bgStyle.ContentMarginLeft = 10; bgStyle.ContentMarginRight = 10;
 			bgStyle.ContentMarginTop = 4; bgStyle.ContentMarginBottom = 4;
 			_chatBubbleBg.AddThemeStyleboxOverride("panel", bgStyle);
@@ -435,7 +464,6 @@ public partial class OverworldHUD : Control
 
 			player.AddChild(_chatBubbleBg);
 
-			// Link to ChatPanel
 			chatPanel.ChatBubbleLabel = _chatBubble;
 			chatPanel.ChatBubbleBg = _chatBubbleBg;
 		}
@@ -451,7 +479,6 @@ public partial class OverworldHUD : Control
 
 	private void HideDebugOverlay()
 	{
-		// Find and hide the old debug overlay so it doesn't overlap
 		var debugLayer = GetTree().Root.FindChild("DebugOverlay", true, false) as Control;
 		if (debugLayer != null)
 		{

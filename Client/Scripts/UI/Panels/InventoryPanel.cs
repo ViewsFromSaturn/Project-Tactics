@@ -4,15 +4,15 @@ namespace ProjectTactics.UI.Panels;
 
 /// <summary>
 /// Inventory / Equipment — future system, stubbed now.
-/// Hotkey: I | Slides: Right
+/// Floating window. Hotkey: I
 /// </summary>
-public partial class InventoryPanel : SlidePanel
+public partial class InventoryPanel : WindowPanel
 {
     public InventoryPanel()
     {
-        PanelTitle = "Inventory";
-        Direction = SlideDirection.Right;
-        PanelWidth = 340;
+        WindowTitle = "Inventory";
+        DefaultSize = new Vector2(360, 480);
+        DefaultPosition = new Vector2(200, 100);
     }
 
     protected override void BuildContent(VBoxContainer content)
@@ -29,7 +29,6 @@ public partial class InventoryPanel : SlidePanel
 
         content.AddChild(UITheme.CreateSpacer(20));
 
-        // Coming soon notice
         var notice = UITheme.CreateBody("This system is planned for a future update.", 12, UITheme.TextDim);
         notice.HorizontalAlignment = HorizontalAlignment.Center;
         notice.AutowrapMode = TextServer.AutowrapMode.Word;

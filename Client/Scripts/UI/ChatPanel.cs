@@ -22,15 +22,15 @@ public partial class ChatPanel : Control
 	public record ChatMessage(string Sender, string Text, MsgType Type, string Time, Color SenderColor);
 
 	// ═══ CHAT COLORS (from HUD v4) ═══
-	static readonly Color SayColor     = new("d4d2cc");
-	static readonly Color WhisperColor = new("b080d0");
-	static readonly Color YellColor    = new("e8a040");
-	static readonly Color EmoteColor   = new("70c870");
-	static readonly Color OocColor     = new("78a8d0");
-	static readonly Color SystemColor  = new("b0a060");
-	static readonly Color FactionColor = new("d0a050");
-	static readonly Color StoryColor   = new("c0a0d8");
-	static readonly Color SpeechWhite  = new("f0ede6");
+	static readonly Color SayColor     = new("2D2D3D");
+	static readonly Color WhisperColor = new("7B4EA0");
+	static readonly Color YellColor    = new("C87020");
+	static readonly Color EmoteColor   = new("2D8A50");
+	static readonly Color OocColor     = new("4070B0");
+	static readonly Color SystemColor  = new("8A7A30");
+	static readonly Color FactionColor = new("C07020");
+	static readonly Color StoryColor   = new("7B4EA0");
+	static readonly Color SpeechWhite  = new("1A1A2E");
 
 	// ═══ STATE ═══
 	readonly List<ChatMessage> _messages = new();
@@ -43,7 +43,7 @@ public partial class ChatPanel : Control
 	bool _settingsOpen = false;
 	bool _scrollLocked = false;
 	int _newMsgCount = 0;
-	Color _playerIcColor = new("d4d2cc");
+	Color _playerIcColor = new("2D2D3D");
 	int _chatFontSize = 13;
 	float _idleTimer = 0f;
 	const float IdleTimeout = 8f;
@@ -181,7 +181,7 @@ public partial class ChatPanel : Control
 		_panel.MouseFilter = MouseFilterEnum.Stop;
 
 		var style = new StyleBoxFlat();
-		style.BgColor = new Color(0.031f, 0.031f, 0.063f, 0.62f);
+		style.BgColor = UITheme.BgWhite;
 		style.CornerRadiusTopRight = 8;
 		style.BorderWidthTop = 1; style.BorderWidthRight = 1;
 		style.BorderColor = UITheme.BorderLight;
@@ -220,9 +220,9 @@ public partial class ChatPanel : Control
 		_exportToast.OffsetRight = 100;
 
 		var style = new StyleBoxFlat();
-		style.BgColor = new Color(0.039f, 0.039f, 0.071f, 0.92f);
+		style.BgColor = UITheme.BgWhite;
 		style.SetCornerRadiusAll(6);
-		style.BorderColor = new Color(0.392f, 0.627f, 0.314f, 0.3f);
+		style.BorderColor = UITheme.BorderFocus;  // Violet accent border
 		style.SetBorderWidthAll(1);
 		style.ContentMarginLeft = 18;
 		style.ContentMarginRight = 18;
@@ -368,7 +368,7 @@ public partial class ChatPanel : Control
 		tabBg.ContentMarginLeft = 8; tabBg.ContentMarginRight = 8;
 		tabBg.ContentMarginTop = 3; tabBg.ContentMarginBottom = 3;
 		tabBg.BorderWidthBottom = 1;
-		tabBg.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.18f);
+		tabBg.BorderColor = UITheme.BorderSubtle;
 		tabContainer.AddThemeStyleboxOverride("panel", tabBg);
 		_panelContent.AddChild(tabContainer);
 
@@ -443,7 +443,7 @@ public partial class ChatPanel : Control
 			bool active = tabId == id;
 			btn.AddThemeColorOverride("font_color", active ? UITheme.TextBright : UITheme.TextDim);
 			var s = new StyleBoxFlat();
-			s.BgColor = active ? new Color(1, 1, 1, 0.06f) : Colors.Transparent;
+			s.BgColor = active ? new Color(0f, 0f, 0f, 0.04f) : Colors.Transparent;
 			s.SetCornerRadiusAll(3);
 			s.ContentMarginLeft = 8; s.ContentMarginRight = 8;
 			s.ContentMarginTop = 2; s.ContentMarginBottom = 2;
@@ -494,9 +494,9 @@ public partial class ChatPanel : Control
 
 		var indicatorPanel = new PanelContainer();
 		var indicatorStyle = new StyleBoxFlat();
-		indicatorStyle.BgColor = new Color(0.047f, 0.047f, 0.086f, 0.92f);
+		indicatorStyle.BgColor = UITheme.BgWhite;
 		indicatorStyle.SetCornerRadiusAll(12);
-		indicatorStyle.BorderColor = new Color(0.314f, 0.431f, 0.588f, 0.35f);
+		indicatorStyle.BorderColor = UITheme.BorderFocus;  // Violet
 		indicatorStyle.SetBorderWidthAll(1);
 		indicatorStyle.ContentMarginLeft = 14; indicatorStyle.ContentMarginRight = 14;
 		indicatorStyle.ContentMarginTop = 3; indicatorStyle.ContentMarginBottom = 3;
@@ -552,15 +552,15 @@ public partial class ChatPanel : Control
 		if (UITheme.FontBodyMedium != null) _verbBtn.AddThemeFontOverride("font", UITheme.FontBodyMedium);
 
 		var verbStyle = new StyleBoxFlat();
-		verbStyle.BgColor = new Color(0.07f, 0.07f, 0.11f, 0.9f);
+		verbStyle.BgColor = UITheme.BgInput;
 		verbStyle.CornerRadiusTopLeft = 4; verbStyle.CornerRadiusBottomLeft = 4;
 		verbStyle.ContentMarginLeft = 10; verbStyle.ContentMarginRight = 10;
 		verbStyle.ContentMarginTop = 6; verbStyle.ContentMarginBottom = 6;
 		verbStyle.BorderWidthRight = 1;
-		verbStyle.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.2f);
+		verbStyle.BorderColor = UITheme.BorderSubtle;
 		_verbBtn.AddThemeStyleboxOverride("normal", verbStyle);
 		var verbHover = (StyleBoxFlat)verbStyle.Duplicate();
-		verbHover.BgColor = new Color(0.11f, 0.11f, 0.165f, 0.95f);
+		verbHover.BgColor = UITheme.BgPanelHover;
 		_verbBtn.AddThemeStyleboxOverride("hover", verbHover);
 		_verbBtn.AddThemeStyleboxOverride("pressed", verbStyle);
 		_verbBtn.Pressed += CycleVerb;
@@ -571,21 +571,21 @@ public partial class ChatPanel : Control
 		_chatInput.PlaceholderText = "Press Enter to chat, Tab to change verb...";
 		_chatInput.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 		_chatInput.AddThemeFontSizeOverride("font_size", _chatFontSize);
-		_chatInput.AddThemeColorOverride("font_color", new Color("e0e0e0"));
-		_chatInput.AddThemeColorOverride("font_placeholder_color", new Color(0.392f, 0.392f, 0.431f, 0.45f));
+		_chatInput.AddThemeColorOverride("font_color", UITheme.TextBright);
+		_chatInput.AddThemeColorOverride("font_placeholder_color", UITheme.TextDim);
 		_chatInput.AddThemeColorOverride("caret_color", UITheme.Accent);
 		if (UITheme.FontBody != null) _chatInput.AddThemeFontOverride("font", UITheme.FontBody);
 
 		var inputStyle = new StyleBoxFlat();
-		inputStyle.BgColor = new Color(0.047f, 0.047f, 0.078f, 0.85f);
+		inputStyle.BgColor = UITheme.BgInput;
 		inputStyle.ContentMarginLeft = 10; inputStyle.ContentMarginRight = 10;
 		inputStyle.ContentMarginTop = 6; inputStyle.ContentMarginBottom = 6;
 		inputStyle.BorderColor = Colors.Transparent; inputStyle.SetBorderWidthAll(1);
 		_chatInput.AddThemeStyleboxOverride("normal", inputStyle);
 
 		var inputFocus = (StyleBoxFlat)inputStyle.Duplicate();
-		inputFocus.BgColor = new Color(0.063f, 0.063f, 0.102f, 0.95f);
-		inputFocus.BorderColor = new Color(0.314f, 0.431f, 0.588f, 0.35f);
+		inputFocus.BgColor = UITheme.BgWhite;
+		inputFocus.BorderColor = UITheme.BorderFocus;  // Violet
 		_chatInput.AddThemeStyleboxOverride("focus", inputFocus);
 
 		_chatInput.TextSubmitted += OnTextSubmitted;
@@ -614,15 +614,15 @@ public partial class ChatPanel : Control
 		_emoteExpandBtn.AddThemeColorOverride("font_hover_color", UITheme.Text);
 
 		var emoteStyle = new StyleBoxFlat();
-		emoteStyle.BgColor = new Color(0.07f, 0.07f, 0.11f, 0.9f);
+		emoteStyle.BgColor = UITheme.BgInput;
 		emoteStyle.CornerRadiusTopRight = 4; emoteStyle.CornerRadiusBottomRight = 4;
 		emoteStyle.ContentMarginLeft = 8; emoteStyle.ContentMarginRight = 8;
 		emoteStyle.ContentMarginTop = 6; emoteStyle.ContentMarginBottom = 6;
 		emoteStyle.BorderWidthLeft = 1;
-		emoteStyle.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.2f);
+		emoteStyle.BorderColor = UITheme.BorderSubtle;
 		_emoteExpandBtn.AddThemeStyleboxOverride("normal", emoteStyle);
 		var emoteHover = (StyleBoxFlat)emoteStyle.Duplicate();
-		emoteHover.BgColor = new Color(0.11f, 0.11f, 0.165f, 0.95f);
+		emoteHover.BgColor = UITheme.BgPanelHover;
 		_emoteExpandBtn.AddThemeStyleboxOverride("hover", emoteHover);
 		_emoteExpandBtn.AddThemeStyleboxOverride("pressed", emoteStyle);
 
@@ -651,9 +651,9 @@ public partial class ChatPanel : Control
 		_emotePanel.OffsetTop = -320;
 
 		var style = new StyleBoxFlat();
-		style.BgColor = new Color(0.039f, 0.039f, 0.071f, 0.95f);
+		style.BgColor = UITheme.BgWhite;
 		style.SetCornerRadiusAll(8);
-		style.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.4f);
+		style.BorderColor = UITheme.BorderMedium;
 		style.SetBorderWidthAll(1);
 		_emotePanel.AddThemeStyleboxOverride("panel", style);
 		AddChild(_emotePanel);
@@ -736,11 +736,11 @@ public partial class ChatPanel : Control
 		if (UITheme.FontBody != null) _emoteTextarea.AddThemeFontOverride("font", UITheme.FontBody);
 
 		var textareaStyle = new StyleBoxFlat();
-		textareaStyle.BgColor = new Color(0.039f, 0.039f, 0.071f, 0.5f);
+		textareaStyle.BgColor = UITheme.BgInput;
 		textareaStyle.ContentMarginLeft = 12; textareaStyle.ContentMarginRight = 12;
 		textareaStyle.ContentMarginTop = 10; textareaStyle.ContentMarginBottom = 10;
 		textareaStyle.BorderWidthBottom = 1;
-		textareaStyle.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.15f);
+		textareaStyle.BorderColor = UITheme.BorderSubtle;
 		_emoteTextarea.AddThemeStyleboxOverride("normal", textareaStyle);
 		var textareaFocus = (StyleBoxFlat)textareaStyle.Duplicate();
 		textareaFocus.BorderColor = new Color(0.314f, 0.549f, 0.314f, 0.4f);
@@ -859,9 +859,9 @@ public partial class ChatPanel : Control
 		_settingsPanel.OffsetLeft = 0; _settingsPanel.OffsetRight = 280;
 
 		var style = new StyleBoxFlat();
-		style.BgColor = new Color(0.047f, 0.047f, 0.078f, 0.95f);
+		style.BgColor = UITheme.BgWhite;
 		style.SetCornerRadiusAll(8);
-		style.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.35f);
+		style.BorderColor = UITheme.BorderMedium;
 		style.SetBorderWidthAll(1);
 		style.ContentMarginLeft = 18; style.ContentMarginRight = 18;
 		style.ContentMarginTop = 16; style.ContentMarginBottom = 16;
@@ -1380,7 +1380,7 @@ public partial class ChatPanel : Control
 	{
 		var sep = new ColorRect();
 		sep.CustomMinimumSize = new Vector2(1, 14);
-		sep.Color = new Color(0.235f, 0.255f, 0.314f, 0.3f);
+		sep.Color = UITheme.BorderSubtle;
 		sep.SizeFlagsVertical = SizeFlags.ShrinkCenter;
 		return sep;
 	}

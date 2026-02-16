@@ -119,7 +119,7 @@ public partial class ColorWheelPicker : VBoxContainer
 
 		// Style the slider
 		var sliderBg = new StyleBoxFlat();
-		sliderBg.BgColor = new Color(0.2f, 0.2f, 0.25f, 0.5f);
+		sliderBg.BgColor = new Color(0.92f, 0.92f, 0.93f, 1f);
 		sliderBg.SetCornerRadiusAll(3);
 		sliderBg.ContentMarginTop = 4;
 		sliderBg.ContentMarginBottom = 4;
@@ -132,7 +132,7 @@ public partial class ColorWheelPicker : VBoxContainer
 		grabber.ContentMarginRight = 6;
 		grabber.ContentMarginTop = 6;
 		grabber.ContentMarginBottom = 6;
-		grabber.BorderColor = new Color(0.16f, 0.16f, 0.2f, 0.8f);
+		grabber.BorderColor = UITheme.BorderMedium;
 		grabber.SetBorderWidthAll(2);
 		_brightnessSlider.AddThemeStyleboxOverride("grabber_area", grabber);
 
@@ -162,17 +162,17 @@ public partial class ColorWheelPicker : VBoxContainer
 		if (UITheme.FontNumbersMedium != null) _hexInput.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
 
 		var hexStyle = new StyleBoxFlat();
-		hexStyle.BgColor = new Color(0.078f, 0.078f, 0.118f, 0.8f);
+		hexStyle.BgColor = UITheme.BgInput;
 		hexStyle.SetCornerRadiusAll(4);
 		hexStyle.ContentMarginLeft = 8;
 		hexStyle.ContentMarginRight = 8;
 		hexStyle.ContentMarginTop = 4;
 		hexStyle.ContentMarginBottom = 4;
-		hexStyle.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.3f);
+		hexStyle.BorderColor = UITheme.BorderSubtle;
 		hexStyle.SetBorderWidthAll(1);
 		_hexInput.AddThemeStyleboxOverride("normal", hexStyle);
 		var hexFocus = (StyleBoxFlat)hexStyle.Duplicate();
-		hexFocus.BorderColor = new Color(0.314f, 0.431f, 0.588f, 0.5f);
+		hexFocus.BorderColor = UITheme.BorderFocus;  // Violet
 		_hexInput.AddThemeStyleboxOverride("focus", hexFocus);
 
 		_hexInput.TextSubmitted += OnHexSubmitted;

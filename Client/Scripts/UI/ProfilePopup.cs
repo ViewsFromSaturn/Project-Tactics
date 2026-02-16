@@ -24,7 +24,7 @@ public partial class ProfilePopup : PanelContainer
     private VBoxContainer _content;
 
     // ═══ STYLING CONSTANTS ═══
-    private static readonly Color PopupBg = new(0.039f, 0.039f, 0.071f, 0.95f);
+    private static readonly Color PopupBg = new(1f, 1f, 1f, 0.98f);
     private static readonly Color PopupBorder = new(0.235f, 0.255f, 0.314f, 0.4f);
     private static readonly Color SepColor = new(0.235f, 0.255f, 0.314f, 0.2f);
 
@@ -88,9 +88,9 @@ public partial class ProfilePopup : PanelContainer
         var portraitFrame = new PanelContainer();
         portraitFrame.CustomMinimumSize = new Vector2(48, 48);
         var portraitStyle = new StyleBoxFlat();
-        portraitStyle.BgColor = new Color(0.157f, 0.157f, 0.216f, 0.6f);
+        portraitStyle.BgColor = new Color(0.96f, 0.96f, 0.97f, 1f);
         portraitStyle.SetCornerRadiusAll(5);
-        portraitStyle.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.3f);
+        portraitStyle.BorderColor = UITheme.BorderSubtle;
         portraitStyle.SetBorderWidthAll(1);
         portraitFrame.AddThemeStyleboxOverride("panel", portraitStyle);
         header.AddChild(portraitFrame);
@@ -315,7 +315,7 @@ public partial class ProfilePopup : PanelContainer
         s.ContentMarginBottom = 2;
         btn.AddThemeStyleboxOverride("normal", s);
         var h = (StyleBoxFlat)s.Duplicate();
-        h.BgColor = new Color(1, 1, 1, 0.04f);
+        h.BgColor = new Color(0f, 0f, 0f, 0.03f);
         btn.AddThemeStyleboxOverride("hover", h);
         btn.AddThemeStyleboxOverride("pressed", s);
     }

@@ -4,15 +4,15 @@ namespace ProjectTactics.UI.Panels;
 
 /// <summary>
 /// Journal — private IC notes/log.
-/// Hotkey: J | Slides: Right
+/// Floating window. Hotkey: J
 /// </summary>
-public partial class JournalPanel : SlidePanel
+public partial class JournalPanel : WindowPanel
 {
     public JournalPanel()
     {
-        PanelTitle = "Journal";
-        Direction = SlideDirection.Right;
-        PanelWidth = 380;
+        WindowTitle = "Chronicle Keeper";
+        DefaultSize = new Vector2(380, 500);
+        DefaultPosition = new Vector2(400, 60);
     }
 
     protected override void BuildContent(VBoxContainer content)
@@ -24,7 +24,6 @@ public partial class JournalPanel : SlidePanel
 
         content.AddChild(UITheme.CreateSpacer(12));
 
-        // New entry area (stub)
         content.AddChild(SectionHeader("New Entry"));
         var input = UITheme.CreateTextArea("Write a journal entry...");
         input.CustomMinimumSize = new Vector2(0, 100);
@@ -37,7 +36,6 @@ public partial class JournalPanel : SlidePanel
         content.AddChild(UITheme.CreateSpacer(8));
         content.AddChild(ThinSeparator());
 
-        // Empty state
         content.AddChild(SectionHeader("Past Entries"));
         content.AddChild(PlaceholderText("No entries yet."));
     }
