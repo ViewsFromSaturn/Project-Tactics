@@ -162,6 +162,7 @@ public partial class ApiClient : Node
 		if (resp.Success)
 		{
 			ParseAuthResponse(resp.Body);
+			SaveSession();
 			EmitSignal(SignalName.RegisterSuccess, Username);
 			GD.Print($"[ApiClient] Registered as {Username}");
 		}
@@ -185,6 +186,7 @@ public partial class ApiClient : Node
 		if (resp.Success)
 		{
 			ParseAuthResponse(resp.Body);
+			SaveSession();
 			EmitSignal(SignalName.LoginSuccess, Username);
 			GD.Print($"[ApiClient] Logged in as {Username}");
 		}
@@ -197,13 +199,93 @@ public partial class ApiClient : Node
 		return resp;
 	}
 
+	/// <summary>Resume a session using a saved token. Returns account + all characters.</summary>
+	public async Task<ApiResponse> Resume()
+	{
+		var resp = await RequestAsync("GET", "/auth/resume");
+
+		if (resp.Success)
+		{
+			// Parse account info from resume response
+			using var doc = System.Text.Json.JsonDocument.Parse(resp.Body);
+			var account = doc.RootElement.GetProperty("account");
+			AccountId = account.GetProperty("id").GetString();
+			Username = account.GetProperty("username").GetString();
+			IsAdmin = account.TryGetProperty("is_admin", out var adminProp) && adminProp.GetBoolean();
+			GD.Print($"[ApiClient] Resumed session as {Username}");
+		}
+		else
+		{
+			// Token invalid/expired — clear saved session
+			ClearSession();
+			GD.Print("[ApiClient] Resume failed, session cleared.");
+		}
+
+		return resp;
+	}
+
 	public void Logout()
 	{
 		AuthToken = "";
 		AccountId = "";
 		Username = "";
 		IsAdmin = false;
+		ClearSession();
 		GD.Print("[ApiClient] Logged out.");
+	}
+
+	// ─── SESSION PERSISTENCE ─────────────────────────────────
+	private const string SessionPath = "user://session.cfg";
+
+	/// <summary>Save auth token and last character to disk.</summary>
+	public void SaveSession(string lastCharacterId = null)
+	{
+		var cfg = new ConfigFile();
+		cfg.SetValue("auth", "token", AuthToken);
+		cfg.SetValue("auth", "account_id", AccountId);
+		cfg.SetValue("auth", "username", Username);
+		if (lastCharacterId != null)
+			cfg.SetValue("session", "last_character_id", lastCharacterId);
+		cfg.Save(SessionPath);
+		GD.Print("[ApiClient] Session saved.");
+	}
+
+	/// <summary>Load saved auth token from disk. Returns true if a token was found.</summary>
+	public bool LoadSession()
+	{
+		var cfg = new ConfigFile();
+		if (cfg.Load(SessionPath) != Error.Ok) return false;
+
+		string token = cfg.GetValue("auth", "token", "").AsString();
+		if (string.IsNullOrEmpty(token)) return false;
+
+		AuthToken = token;
+		AccountId = cfg.GetValue("auth", "account_id", "").AsString();
+		Username = cfg.GetValue("auth", "username", "").AsString();
+		GD.Print($"[ApiClient] Session loaded for {Username}");
+		return true;
+	}
+
+	/// <summary>Get last played character ID from saved session.</summary>
+	public string GetLastCharacterId()
+	{
+		var cfg = new ConfigFile();
+		if (cfg.Load(SessionPath) != Error.Ok) return "";
+		return cfg.GetValue("session", "last_character_id", "").AsString();
+	}
+
+	/// <summary>Check if a saved session exists.</summary>
+	public bool HasSavedSession()
+	{
+		return FileAccess.FileExists(SessionPath);
+	}
+
+	/// <summary>Delete saved session from disk.</summary>
+	public void ClearSession()
+	{
+		if (FileAccess.FileExists(SessionPath))
+			DirAccess.Open("user://").Remove("session.cfg");
+		GD.Print("[ApiClient] Session cleared.");
 	}
 
 	private void ParseAuthResponse(string json)

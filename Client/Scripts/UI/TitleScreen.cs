@@ -14,6 +14,7 @@ public partial class TitleScreen : Control
 
 	private VBoxContainer _titlePanel;
 	private VBoxContainer _formPanel;
+	private Label _resumeLabel;
 
 	// Form inputs
 	private LineEdit _usernameInput;
@@ -28,6 +29,38 @@ public partial class TitleScreen : Control
 		BuildUI();
 		ShowMode(Mode.Title);
 		GD.Print("[TitleScreen] Ready.");
+
+		// Try to resume saved session
+		TryAutoResume();
+	}
+
+	private async void TryAutoResume()
+	{
+		var api = Networking.ApiClient.Instance;
+		if (api == null || !api.HasSavedSession()) return;
+
+		if (!api.LoadSession()) return;
+
+		// Show resuming state
+		_titlePanel.Visible = false;
+		_formPanel.Visible = false;
+		_resumeLabel.Visible = true;
+		_resumeLabel.Text = $"Resuming as {api.Username}...";
+
+		var resp = await api.Resume();
+
+		if (resp.Success)
+		{
+			GD.Print("[TitleScreen] Auto-resume success, going to character select.");
+			GoToCharacterSelect();
+		}
+		else
+		{
+			// Token expired or invalid — show normal title
+			GD.Print("[TitleScreen] Auto-resume failed, showing login.");
+			_resumeLabel.Visible = false;
+			ShowMode(Mode.Title);
+		}
 	}
 
 	// ═════════════════════════════════════════════════════════
@@ -92,6 +125,15 @@ public partial class TitleScreen : Control
 
 		// Version label
 		AddChild(UITheme.CreateVersionLabel());
+
+		// Resume label (hidden by default, shown during auto-resume)
+		_resumeLabel = UITheme.CreateBody("Resuming...", 16, UITheme.TextDim);
+		_resumeLabel.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
+		_resumeLabel.GrowHorizontal = GrowDirection.Both;
+		_resumeLabel.GrowVertical = GrowDirection.Both;
+		_resumeLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_resumeLabel.Visible = false;
+		AddChild(_resumeLabel);
 	}
 
 	// ═════════════════════════════════════════════════════════

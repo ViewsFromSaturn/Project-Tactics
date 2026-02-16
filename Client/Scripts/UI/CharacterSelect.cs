@@ -1,18 +1,25 @@
 using Godot;
+using System.Collections.Generic;
 using System.Text.Json;
 
 namespace ProjectTactics.UI;
 
 /// <summary>
 /// Character Select Screen — loads character slots from Flask API.
-/// Visual style matches HUD v4 mockup.
+/// Supports "Continue" quick-play for returning players.
+/// Uses combined resume data when available to avoid extra API calls.
 /// </summary>
 public partial class CharacterSelect : Control
 {
 	private const int MaxSlots = 3;
+	private VBoxContainer _mainVbox;
 	private VBoxContainer _slotsContainer;
+	private PanelContainer _continuePanel;
 	private Label _welcomeLabel;
 	private Label _loadingLabel;
+
+	// Cache full character data from resume response
+	private readonly Dictionary<string, JsonElement> _cachedCharacters = new();
 
 	public override void _Ready()
 	{
@@ -25,37 +32,44 @@ public partial class CharacterSelect : Control
 	{
 		AddChild(UITheme.CreateBackground());
 
-		var mainVbox = new VBoxContainer();
-		mainVbox.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-		mainVbox.AddThemeConstantOverride("separation", 6);
-		mainVbox.OffsetLeft = 60;
-		mainVbox.OffsetRight = -60;
-		mainVbox.OffsetTop = 40;
-		mainVbox.OffsetBottom = -40;
-		AddChild(mainVbox);
+		_mainVbox = new VBoxContainer();
+		_mainVbox.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+		_mainVbox.AddThemeConstantOverride("separation", 6);
+		_mainVbox.OffsetLeft = 60;
+		_mainVbox.OffsetRight = -60;
+		_mainVbox.OffsetTop = 40;
+		_mainVbox.OffsetBottom = -40;
+		AddChild(_mainVbox);
 
 		var title = UITheme.CreateTitle("CHARACTER SELECT", 28);
 		title.AddThemeColorOverride("font_color", UITheme.AccentOrange);
-		mainVbox.AddChild(title);
+		_mainVbox.AddChild(title);
 
 		// Welcome message
 		var api = Networking.ApiClient.Instance;
 		string name = api != null ? api.Username : "Traveler";
 		_welcomeLabel = UITheme.CreateDim($"Welcome back, {name}", 13);
 		_welcomeLabel.HorizontalAlignment = HorizontalAlignment.Center;
-		mainVbox.AddChild(_welcomeLabel);
+		_mainVbox.AddChild(_welcomeLabel);
 
-		mainVbox.AddChild(UITheme.CreateSpacer(12));
+		_mainVbox.AddChild(UITheme.CreateSpacer(4));
+
+		// Continue panel placeholder (built dynamically after loading)
+		_continuePanel = new PanelContainer();
+		_continuePanel.Visible = false;
+		_mainVbox.AddChild(_continuePanel);
+
+		_mainVbox.AddChild(UITheme.CreateSpacer(4));
 
 		// Loading
 		_loadingLabel = UITheme.CreateBody("Loading characters...", 14, UITheme.TextDim);
 		_loadingLabel.HorizontalAlignment = HorizontalAlignment.Center;
-		mainVbox.AddChild(_loadingLabel);
+		_mainVbox.AddChild(_loadingLabel);
 
 		// Slots container (centered)
 		var centerContainer = new CenterContainer();
 		centerContainer.SizeFlagsVertical = SizeFlags.ExpandFill;
-		mainVbox.AddChild(centerContainer);
+		_mainVbox.AddChild(centerContainer);
 
 		_slotsContainer = new VBoxContainer();
 		_slotsContainer.CustomMinimumSize = new Vector2(520, 0);
@@ -65,7 +79,7 @@ public partial class CharacterSelect : Control
 		// Bottom bar
 		var bottomBar = new HBoxContainer();
 		bottomBar.Alignment = BoxContainer.AlignmentMode.Center;
-		mainVbox.AddChild(bottomBar);
+		_mainVbox.AddChild(bottomBar);
 
 		var logoutBtn = UITheme.CreateGhostButton("← Logout", 13);
 		logoutBtn.Pressed += OnLogoutPressed;
@@ -88,7 +102,8 @@ public partial class CharacterSelect : Control
 			return;
 		}
 
-		var resp = await api.GetCharacters();
+		// Resume gives us account + slots + full character data in one call
+		var resp = await api.Resume();
 
 		_loadingLabel.Visible = false;
 
@@ -100,7 +115,18 @@ public partial class CharacterSelect : Control
 		}
 
 		using var doc = JsonDocument.Parse(resp.Body);
-		var slots = doc.RootElement.GetProperty("slots");
+		var root = doc.RootElement;
+		var slots = root.GetProperty("slots");
+
+		// Cache full character data
+		if (root.TryGetProperty("characters", out var chars))
+		{
+			foreach (var prop in chars.EnumerateObject())
+				_cachedCharacters[prop.Name] = prop.Value.Clone();
+		}
+
+		// Find last played character for Continue button
+		string lastCharId = api.GetLastCharacterId();
 
 		for (int i = 1; i <= MaxSlots; i++)
 		{
@@ -110,15 +136,73 @@ public partial class CharacterSelect : Control
 			if (slotData.ValueKind == JsonValueKind.Null)
 				_slotsContainer.AddChild(CreateEmptySlot(i));
 			else
-				_slotsContainer.AddChild(CreateOccupiedSlot(i, slotData));
+			{
+				string charId = slotData.GetProperty("id").GetString();
+				string charName = slotData.GetProperty("name").GetString();
+				bool isLast = charId == lastCharId;
+
+				_slotsContainer.AddChild(CreateOccupiedSlot(i, slotData, isLast));
+
+				// Build Continue panel for last played character
+				if (isLast)
+					BuildContinuePanel(charId, charName, slotData);
+			}
 		}
+	}
+
+	// ═════════════════════════════════════════════════════════
+	//  CONTINUE PANEL (quick-play for returning players)
+	// ═════════════════════════════════════════════════════════
+
+	private void BuildContinuePanel(string charId, string charName, JsonElement data)
+	{
+		_continuePanel.Visible = true;
+
+		var style = new StyleBoxFlat();
+		style.BgColor = new Color(0.047f, 0.047f, 0.078f, 0.85f);
+		style.SetCornerRadiusAll(8);
+		style.BorderColor = UITheme.Accent;
+		style.SetBorderWidthAll(1);
+		style.ContentMarginLeft = 20; style.ContentMarginRight = 20;
+		style.ContentMarginTop = 12; style.ContentMarginBottom = 12;
+		_continuePanel.AddThemeStyleboxOverride("panel", style);
+
+		var hbox = new HBoxContainer();
+		hbox.AddThemeConstantOverride("separation", 16);
+		_continuePanel.AddChild(hbox);
+
+		// Info
+		var infoVbox = new VBoxContainer();
+		infoVbox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		infoVbox.AddThemeConstantOverride("separation", 2);
+		hbox.AddChild(infoVbox);
+
+		var label = UITheme.CreateDim("LAST PLAYED", 10);
+		infoVbox.AddChild(label);
+
+		string rank = data.GetProperty("rp_rank").GetString();
+		string city = data.GetProperty("city").GetString();
+		int level = data.GetProperty("character_level").GetInt32();
+
+		var nameLabel = UITheme.CreateTitle(charName, 18);
+		nameLabel.HorizontalAlignment = HorizontalAlignment.Left;
+		infoVbox.AddChild(nameLabel);
+
+		var metaLabel = UITheme.CreateBody($"Lv.{level}  ·  {rank}  ·  {city}", 12, UITheme.TextDim);
+		infoVbox.AddChild(metaLabel);
+
+		// Big continue button
+		var continueBtn = UITheme.CreatePrimaryButton("CONTINUE", 15);
+		continueBtn.CustomMinimumSize = new Vector2(160, 46);
+		continueBtn.Pressed += () => OnPlayCharacter(charId, charName);
+		hbox.AddChild(continueBtn);
 	}
 
 	// ═════════════════════════════════════════════════════════
 	//  SLOT UI
 	// ═════════════════════════════════════════════════════════
 
-	private PanelContainer CreateOccupiedSlot(int slotNum, JsonElement data)
+	private PanelContainer CreateOccupiedSlot(int slotNum, JsonElement data, bool isLastPlayed)
 	{
 		string charId = data.GetProperty("id").GetString();
 		string charName = data.GetProperty("name").GetString();
@@ -132,34 +216,30 @@ public partial class CharacterSelect : Control
 		int sta = data.GetProperty("stamina").GetInt32();
 		int etc = data.GetProperty("ether_control").GetInt32();
 
-		var panel = UITheme.CreatePanel(borderColor: UITheme.Border);
+		var borderColor = isLastPlayed ? UITheme.Accent : UITheme.Border;
+		var panel = UITheme.CreatePanel(borderColor: borderColor);
 		panel.CustomMinimumSize = new Vector2(520, 90);
 
 		var hbox = new HBoxContainer();
 		hbox.AddThemeConstantOverride("separation", 16);
 		panel.AddChild(hbox);
 
-		// Character info
 		var infoVbox = new VBoxContainer();
 		infoVbox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 		infoVbox.AddThemeConstantOverride("separation", 3);
 		hbox.AddChild(infoVbox);
 
-		// Name row
 		var nameLabel = UITheme.CreateTitle($"{charName}", 18);
 		nameLabel.HorizontalAlignment = HorizontalAlignment.Left;
 		infoVbox.AddChild(nameLabel);
 
-		// Rank / City row
 		var metaLabel = UITheme.CreateBody($"Lv.{level}  ·  {rank}  ·  {city}", 12, UITheme.TextDim);
 		infoVbox.AddChild(metaLabel);
 
-		// Stats row
 		var statsText = $"STR {str}   SPD {spd}   AGI {agi}   END {end}   STA {sta}   ETH {etc}";
 		var statsLabel = UITheme.CreateNumbers(statsText, 11, UITheme.TextDim);
 		infoVbox.AddChild(statsLabel);
 
-		// Buttons column
 		var btnVbox = new VBoxContainer();
 		btnVbox.AddThemeConstantOverride("separation", 6);
 		hbox.AddChild(btnVbox);
@@ -208,16 +288,25 @@ public partial class CharacterSelect : Control
 		GD.Print($"[CharacterSelect] Loading {charName}...");
 
 		var api = Networking.ApiClient.Instance;
-		var resp = await api.GetCharacter(charId);
 
-		if (!resp.Success)
+		// Use cached data from resume if available, otherwise fetch
+		JsonElement c;
+		if (_cachedCharacters.ContainsKey(charId))
 		{
-			GD.PrintErr($"[CharacterSelect] Failed to load: {resp.Error}");
-			return;
+			c = _cachedCharacters[charId];
+			GD.Print($"[CharacterSelect] Using cached data for {charName}");
 		}
-
-		using var doc = JsonDocument.Parse(resp.Body);
-		var c = doc.RootElement.GetProperty("character");
+		else
+		{
+			var resp = await api.GetCharacter(charId);
+			if (!resp.Success)
+			{
+				GD.PrintErr($"[CharacterSelect] Failed to load: {resp.Error}");
+				return;
+			}
+			using var doc = JsonDocument.Parse(resp.Body);
+			c = doc.RootElement.GetProperty("character").Clone();
+		}
 
 		var data = new Core.PlayerData
 		{
@@ -238,6 +327,9 @@ public partial class CharacterSelect : Control
 			CurrentHp = c.GetProperty("current_hp").GetInt32(),
 			CurrentEther = c.GetProperty("current_ether").GetInt32(),
 		};
+
+		// Save this as last played character
+		api.SaveSession(charId);
 
 		var gm = Core.GameManager.Instance;
 		gm.LoadCharacter(data, charId);

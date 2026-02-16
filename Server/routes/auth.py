@@ -10,7 +10,7 @@ import jwt
 from flask import Blueprint, request, jsonify, g
 
 from database import db
-from models import Account
+from models import Account, Character
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -169,6 +169,27 @@ def login():
 def me():
     """Get current account info (validates token)."""
     return jsonify({"account": g.current_account.to_dict()}), 200
+
+
+@auth_bp.route("/resume", methods=["GET"])
+@require_auth
+def resume():
+    """Validate token and return account + all character data in one call.
+    Replaces: /auth/me + /characters/ + /characters/{id} for returning players."""
+    account = g.current_account
+    characters = Character.query.filter_by(account_id=account.id).all()
+
+    slots = {1: None, 2: None, 3: None}
+    full_characters = {}
+    for char in characters:
+        slots[char.slot] = char.to_summary()
+        full_characters[char.id] = char.to_dict()
+
+    return jsonify({
+        "account": account.to_dict(),
+        "slots": slots,
+        "characters": full_characters,
+    }), 200
 
 
 @auth_bp.route("/change-password", methods=["POST"])

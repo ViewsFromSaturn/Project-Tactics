@@ -71,7 +71,9 @@ public partial class ChatPanel : Control
 
 	// Settings panel refs
 	PanelContainer _settingsPanel;
-	ColorWheelPicker _colorWheel;
+	LineEdit _colorHexInput;
+	ColorRect _colorPreviewSwatch;
+	Label _colorPreviewName;
 	HSlider _fontSizeSlider;
 	Label _textSizeLabel;
 
@@ -86,11 +88,13 @@ public partial class ChatPanel : Control
 	float _resizeStartX = 0f;
 	float _resizeStartHeight = 0f;
 	float _resizeStartWidth = 0f;
+	Control _topResizeHandle;
+	Control _rightResizeHandle;
 	const float ChatMinHeight = 160f;
 	const float ChatMaxHeight = 520f;
 	const float ChatMinWidth = 300f;
 	const float ChatMaxWidthPct = 0.7f;
-	float _panelWidth = 0f; // 0 = use default percentage
+	float _panelWidth = 560f;
 
 	// Emote panel drag + resize state
 	bool _emoteDragging = false;
@@ -122,7 +126,8 @@ public partial class ChatPanel : Control
 		// Track focus state for input blocking
 		bool chatFocused = _chatInput?.HasFocus() == true;
 		bool emoteFocused = _emoteTextarea?.HasFocus() == true;
-		IsUiFocused = chatFocused || emoteFocused;
+		bool colorFocused = _colorHexInput?.HasFocus() == true;
+		IsUiFocused = chatFocused || emoteFocused || colorFocused;
 
 		// Release all drag states if mouse not held
 		if (!Input.IsMouseButtonPressed(MouseButton.Left))
@@ -256,27 +261,55 @@ public partial class ChatPanel : Control
 
 	private void BuildResizeHandle()
 	{
-		// Top edge — height resize
+		// Top edge — height resize (anchored to bottom-left, matching panel top)
 		var topHandle = new Control();
-		topHandle.SetAnchorsAndOffsetsPreset(LayoutPreset.TopWide);
-		topHandle.OffsetTop = -4;
-		topHandle.OffsetBottom = 4;
+		topHandle.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomLeft);
+		topHandle.GrowVertical = GrowDirection.Begin;
+		topHandle.OffsetTop = -(_panelHeight + 4);
+		topHandle.OffsetBottom = -(_panelHeight - 4);
+		topHandle.OffsetRight = _panelWidth > 0 ? _panelWidth : GetViewportRect().Size.X * 0.44f;
 		topHandle.MouseFilter = MouseFilterEnum.Stop;
 		topHandle.MouseDefaultCursorShape = CursorShape.Vsize;
 		topHandle.Name = "ResizeHandleTop";
 		topHandle.GuiInput += OnResizeInput;
-		_panel.AddChild(topHandle);
+		_topResizeHandle = topHandle;
+		AddChild(topHandle);
 
-		// Right edge — width resize
+		// Right edge — width resize (anchored to bottom-left, matching panel right)
 		var rightHandle = new Control();
-		rightHandle.SetAnchorsAndOffsetsPreset(LayoutPreset.RightWide);
-		rightHandle.OffsetLeft = -4;
-		rightHandle.OffsetRight = 4;
+		rightHandle.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomLeft);
+		rightHandle.GrowVertical = GrowDirection.Begin;
+		float panelW = _panelWidth > 0 ? _panelWidth : GetViewportRect().Size.X * 0.44f;
+		rightHandle.OffsetLeft = panelW - 4;
+		rightHandle.OffsetRight = panelW + 4;
+		rightHandle.OffsetTop = -_panelHeight;
+		rightHandle.OffsetBottom = 0;
 		rightHandle.MouseFilter = MouseFilterEnum.Stop;
 		rightHandle.MouseDefaultCursorShape = CursorShape.Hsize;
 		rightHandle.Name = "ResizeHandleRight";
 		rightHandle.GuiInput += OnWidthResizeInput;
-		_panel.AddChild(rightHandle);
+		_rightResizeHandle = rightHandle;
+		AddChild(rightHandle);
+	}
+
+	/// <summary>Keep resize handles positioned at panel edges after resize.</summary>
+	private void UpdateResizeHandles()
+	{
+		if (_topResizeHandle != null)
+		{
+			float w = _panelWidth > 0 ? _panelWidth : (_panel?.Size.X ?? GetViewportRect().Size.X * 0.44f);
+			_topResizeHandle.OffsetTop = -(_panelHeight + 4);
+			_topResizeHandle.OffsetBottom = -(_panelHeight - 4);
+			_topResizeHandle.OffsetRight = w;
+		}
+		if (_rightResizeHandle != null)
+		{
+			float w = _panelWidth > 0 ? _panelWidth : (_panel?.Size.X ?? GetViewportRect().Size.X * 0.44f);
+			_rightResizeHandle.OffsetLeft = w - 4;
+			_rightResizeHandle.OffsetRight = w + 4;
+			_rightResizeHandle.OffsetTop = -_panelHeight;
+			_rightResizeHandle.OffsetBottom = 0;
+		}
 	}
 
 	private void OnResizeInput(InputEvent ev)
@@ -299,8 +332,9 @@ public partial class ChatPanel : Control
 			float delta = _resizeStartY - mm.GlobalPosition.Y;
 			_panelHeight = Math.Clamp(_resizeStartHeight + delta, ChatMinHeight, ChatMaxHeight);
 			_panel.OffsetTop = -_panelHeight;
-			if (_settingsOpen)
+			if (_settingsOpen && _settingsPanel != null)
 				_settingsPanel.OffsetBottom = -(_panelHeight + 6);
+			UpdateResizeHandles();
 		}
 	}
 
@@ -323,7 +357,8 @@ public partial class ChatPanel : Control
 			float newWidth = Math.Clamp(_resizeStartWidth + delta, ChatMinWidth, viewport * ChatMaxWidthPct);
 			_panelWidth = newWidth;
 			_panel.OffsetRight = newWidth;
-			_settingsPanel.OffsetRight = 280; // Keep settings fixed width
+			if (_settingsPanel != null) _settingsPanel.OffsetRight = 280;
+			UpdateResizeHandles();
 		}
 	}
 
@@ -826,16 +861,39 @@ public partial class ChatPanel : Control
 
 		vbox.AddChild(UITheme.CreateTitle("Chat Settings", 12));
 
-		// ─── IC Color section with full HSL color wheel ──────
+		// ─── IC Color section (hex input + preview) ─────────
 		vbox.AddChild(UITheme.CreateDim("IC COLOR", 10));
 
-		_colorWheel = new ColorWheelPicker();
-		_colorWheel.SetColor(_playerIcColor);
-		_colorWheel.ColorChanged += OnColorWheelChanged;
-		// Set preview name from player data
-		var active = Core.GameManager.Instance?.ActiveCharacter;
-		if (active != null) _colorWheel.SetPreviewName(active.CharacterName);
-		vbox.AddChild(_colorWheel);
+		var colorRow = new HBoxContainer();
+		colorRow.AddThemeConstantOverride("separation", 10);
+		vbox.AddChild(colorRow);
+
+		_colorPreviewSwatch = new ColorRect();
+		_colorPreviewSwatch.CustomMinimumSize = new Vector2(28, 28);
+		_colorPreviewSwatch.Color = _playerIcColor;
+		colorRow.AddChild(_colorPreviewSwatch);
+
+		_colorHexInput = new LineEdit();
+		_colorHexInput.Text = "#" + _playerIcColor.ToHtml(false);
+		_colorHexInput.MaxLength = 7;
+		_colorHexInput.CustomMinimumSize = new Vector2(80, 0);
+		_colorHexInput.AddThemeFontSizeOverride("font_size", 12);
+		_colorHexInput.AddThemeColorOverride("font_color", UITheme.TextBright);
+		if (UITheme.FontNumbersMedium != null) _colorHexInput.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
+		var hexStyle = new StyleBoxFlat();
+		hexStyle.BgColor = new Color(0.078f, 0.078f, 0.118f, 0.8f);
+		hexStyle.SetCornerRadiusAll(4);
+		hexStyle.ContentMarginLeft = 8; hexStyle.ContentMarginRight = 8;
+		hexStyle.ContentMarginTop = 4; hexStyle.ContentMarginBottom = 4;
+		hexStyle.BorderColor = new Color(0.235f, 0.255f, 0.314f, 0.3f);
+		hexStyle.SetBorderWidthAll(1);
+		_colorHexInput.AddThemeStyleboxOverride("normal", hexStyle);
+		_colorHexInput.TextSubmitted += OnColorHexSubmitted;
+		colorRow.AddChild(_colorHexInput);
+
+		var playerName = Core.GameManager.Instance?.ActiveCharacter?.CharacterName ?? "Player";
+		_colorPreviewName = UITheme.CreateBody(playerName, 12, _playerIcColor);
+		colorRow.AddChild(_colorPreviewName);
 
 		// ─── Text Size section with slider + buttons ─────────
 		vbox.AddChild(UITheme.CreateSeparator());
@@ -879,11 +937,18 @@ public partial class ChatPanel : Control
 		vbox.AddChild(closeBtn);
 	}
 
-	private void OnColorWheelChanged(Color color)
+	private void OnColorHexSubmitted(string hex)
 	{
-		_playerIcColor = color;
-		RefreshMessages();
-		ResetIdle();
+		hex = hex.Trim();
+		if (!hex.StartsWith('#')) hex = "#" + hex;
+		if (hex.Length == 7 && Color.HtmlIsValid(hex))
+		{
+			_playerIcColor = new Color(hex);
+			_colorPreviewSwatch.Color = _playerIcColor;
+			_colorPreviewName.AddThemeColorOverride("font_color", _playerIcColor);
+			RefreshMessages();
+		}
+		_colorHexInput.ReleaseFocus();
 	}
 
 	// ═════════════════════════════════════════════════════════
@@ -912,6 +977,13 @@ public partial class ChatPanel : Control
 			}
 			// Consume all keys while emote textarea focused
 			GetViewport().SetInputAsHandled();
+			return;
+		}
+
+		// Color hex input: Escape releases focus
+		if (_colorHexInput?.HasFocus() == true)
+		{
+			if (key.Keycode == Key.Escape) { _colorHexInput.ReleaseFocus(); GetViewport().SetInputAsHandled(); }
 			return;
 		}
 
@@ -1052,8 +1124,8 @@ public partial class ChatPanel : Control
 	private void ToggleSettings()
 	{
 		_settingsOpen = !_settingsOpen;
-		_settingsPanel.Visible = _settingsOpen;
-		_settingsBtn.AddThemeColorOverride("font_color", _settingsOpen ? UITheme.Accent : UITheme.TextDim);
+		if (_settingsPanel != null) _settingsPanel.Visible = _settingsOpen;
+		_settingsBtn?.AddThemeColorOverride("font_color", _settingsOpen ? UITheme.Accent : UITheme.TextDim);
 	}
 
 	private void OnExportPressed()
@@ -1094,10 +1166,10 @@ public partial class ChatPanel : Control
 	private void SetFontSize(int size)
 	{
 		_chatFontSize = Math.Clamp(size, 10, 18);
-		_messageLog.AddThemeFontSizeOverride("normal_font_size", _chatFontSize);
-		_chatInput.AddThemeFontSizeOverride("font_size", _chatFontSize);
-		_emoteTextarea.AddThemeFontSizeOverride("font_size", _chatFontSize);
-		_textSizeLabel.Text = $"{_chatFontSize}px";
+		_messageLog?.AddThemeFontSizeOverride("normal_font_size", _chatFontSize);
+		_chatInput?.AddThemeFontSizeOverride("font_size", _chatFontSize);
+		_emoteTextarea?.AddThemeFontSizeOverride("font_size", _chatFontSize);
+		if (_textSizeLabel != null) _textSizeLabel.Text = $"{_chatFontSize}px";
 		if (_fontSizeSlider != null) _fontSizeSlider.SetValueNoSignal(_chatFontSize);
 	}
 
@@ -1180,6 +1252,7 @@ public partial class ChatPanel : Control
 
 	private void RefreshMessages()
 	{
+		if (_messageLog == null) return;
 		_messageLog.Clear();
 		foreach (var msg in _messages)
 			if (PassesFilter(msg.Type)) AppendFormatted(msg);
@@ -1187,6 +1260,7 @@ public partial class ChatPanel : Control
 
 	private void AppendFormatted(ChatMessage msg)
 	{
+		if (_messageLog == null) return;
 		string t = $"[color=#78736966]{msg.Time}[/color] ";
 		string sc = msg.SenderColor.ToHtml(false); // sender color hex
 		string s = Esc(msg.Sender);
