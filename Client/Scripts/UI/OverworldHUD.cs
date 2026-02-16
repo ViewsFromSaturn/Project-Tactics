@@ -15,14 +15,20 @@ public partial class OverworldHUD : Control
     private Label _nameLabel;
     private Label _rankLabel;
     private Label _tpLabel;
-    private ColorRect _hpFill;
-    private ColorRect _staFill;
-    private ColorRect _ethFill;
+    private TextureRect _hpFill;
+    private TextureRect _staFill;
+    private TextureRect _ethFill;
     private Label _hpValue;
     private Label _staValue;
     private Label _ethValue;
 
     private const float BarTrackWidth = 160f;
+
+    // Idle fade refs
+    private PanelContainer _identityBarPanel;
+    private VBoxContainer _quickActionsContainer;
+    private float _hudIdleTimer = 0f;
+    private const float HudIdleTimeout = 8f;
 
     // ═══ PANEL SYSTEM ═══
     private readonly Dictionary<string, Panels.SlidePanel> _panels = new();
@@ -56,6 +62,22 @@ public partial class OverworldHUD : Control
     public override void _Process(double delta)
     {
         UpdateBars();
+
+        // Idle fade for identity bar and quick actions (matches mockup)
+        _hudIdleTimer += (float)delta;
+        bool isIdle = _hudIdleTimer > HudIdleTimeout && !ChatPanel.IsUiFocused;
+        float targetAlpha = isIdle ? 0.35f : 1.0f;
+
+        if (_identityBarPanel != null)
+            _identityBarPanel.Modulate = _identityBarPanel.Modulate.Lerp(new Color(1, 1, 1, targetAlpha), (float)delta * 3);
+        if (_quickActionsContainer != null)
+            _quickActionsContainer.Modulate = _quickActionsContainer.Modulate.Lerp(new Color(1, 1, 1, isIdle ? 0.3f : 1f), (float)delta * 3);
+    }
+
+    public override void _Input(InputEvent ev)
+    {
+        if (ev is InputEventMouseMotion || ev is InputEventKey)
+            _hudIdleTimer = 0f;
     }
 
     public override void _UnhandledInput(InputEvent ev)
@@ -98,7 +120,7 @@ public partial class OverworldHUD : Control
     private void BuildIdentityBar()
     {
         var panel = new PanelContainer();
-        panel.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
+        _identityBarPanel = panel;        panel.SetAnchorsAndOffsetsPreset(LayoutPreset.TopLeft);
         panel.CustomMinimumSize = new Vector2(280, 0);
         panel.MouseFilter = MouseFilterEnum.Stop;
 
@@ -113,6 +135,7 @@ public partial class OverworldHUD : Control
         panelStyle.ContentMarginTop = 8;
         panelStyle.ContentMarginBottom = 10;
         panel.AddThemeStyleboxOverride("panel", panelStyle);
+        panel.MouseEntered += () => _hudIdleTimer = 0f;
         AddChild(panel);
 
         var vbox = new VBoxContainer();
@@ -168,20 +191,24 @@ public partial class OverworldHUD : Control
         vbox.AddChild(barsVbox);
 
         (_hpFill, _hpValue) = CreateBar(barsVbox, "HP",
-            new Color("48a848"), new Color(0.157f, 0.314f, 0.157f, 0.25f),
+            new Color("388838"), new Color("48a848"), new Color("58c058"),
+            new Color(0.157f, 0.314f, 0.157f, 0.25f),
             new Color(0.235f, 0.549f, 0.235f, 0.3f), new Color(0.282f, 0.659f, 0.282f, 0.75f));
 
         (_staFill, _staValue) = CreateBar(barsVbox, "STA",
-            new Color("c89838"), new Color(0.471f, 0.353f, 0.118f, 0.2f),
+            new Color("a07828"), new Color("c89838"), new Color("d8a840"),
+            new Color(0.471f, 0.353f, 0.118f, 0.2f),
             new Color(0.706f, 0.549f, 0.196f, 0.25f), new Color(0.784f, 0.596f, 0.22f, 0.65f));
 
         (_ethFill, _ethValue) = CreateBar(barsVbox, "ETH",
-            new Color("4888d0"), new Color(0.157f, 0.235f, 0.471f, 0.2f),
+            new Color("3060a0"), new Color("4888d0"), new Color("58a0e0"),
+            new Color(0.157f, 0.235f, 0.471f, 0.2f),
             new Color(0.235f, 0.431f, 0.745f, 0.25f), new Color(0.282f, 0.533f, 0.816f, 0.65f));
     }
 
-    private (ColorRect fill, Label value) CreateBar(VBoxContainer parent, string label,
-        Color fillColor, Color trackBg, Color trackBorder, Color textColor)
+    private (TextureRect fill, Label value) CreateBar(VBoxContainer parent, string label,
+        Color fillColorStart, Color fillColorMid, Color fillColorEnd,
+        Color trackBg, Color trackBorder, Color textColor)
     {
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 6);
@@ -210,15 +237,36 @@ public partial class OverworldHUD : Control
         track.AddThemeStyleboxOverride("panel", trackStyle);
         row.AddChild(track);
 
-        var fill = new ColorRect();
+        // Gradient fill using TextureRect + GradientTexture1D
+        var fill = new TextureRect();
         fill.CustomMinimumSize = new Vector2(0, 6);
         fill.SizeFlagsVertical = SizeFlags.ShrinkCenter;
-        fill.Color = fillColor;
+        fill.StretchMode = TextureRect.StretchModeEnum.Scale;
         fill.SetAnchorsAndOffsetsPreset(LayoutPreset.LeftWide);
         fill.OffsetTop = 1;
         fill.OffsetBottom = -1;
         fill.OffsetLeft = 1;
+
+        // Create gradient: start → mid → end (like the mockup's linear-gradient)
+        var gradient = new Gradient();
+        gradient.SetColor(0, fillColorStart);
+        gradient.AddPoint(0.6f, fillColorMid);
+        gradient.SetColor(gradient.GetPointCount() - 1, fillColorEnd);
+
+        var gradTex = new GradientTexture1D();
+        gradTex.Gradient = gradient;
+        gradTex.Width = 128;
+        fill.Texture = gradTex;
         track.AddChild(fill);
+
+        // Shine overlay (top highlight like mockup's ::after)
+        var shine = new ColorRect();
+        shine.SetAnchorsAndOffsetsPreset(LayoutPreset.TopWide);
+        shine.OffsetBottom = 3; // 40% of bar height
+        shine.OffsetLeft = 1;
+        shine.Color = new Color(1f, 1f, 1f, 0.12f);
+        shine.MouseFilter = MouseFilterEnum.Ignore;
+        fill.AddChild(shine);
 
         var val = new Label();
         val.Text = "0 / 0";
@@ -239,6 +287,7 @@ public partial class OverworldHUD : Control
     private void BuildQuickActions()
     {
         var vbox = new VBoxContainer();
+        _quickActionsContainer = vbox;
         vbox.AddThemeConstantOverride("separation", 4);
         vbox.SetAnchorsAndOffsetsPreset(LayoutPreset.BottomRight);
         vbox.GrowHorizontal = GrowDirection.Begin;
