@@ -16,21 +16,24 @@ public partial class ChatPanel : Control
 	/// <summary>Set true when any UI text field is focused. PlayerController checks this.</summary>
 	public static bool IsUiFocused { get; private set; } = false;
 
+	/// <summary>When false, chat panel stays fully visible and never fades.</summary>
+	public static bool FadeWhenIdle { get; set; } = false;
+
 	// ═══ MESSAGE TYPES ═══
 	public enum MsgType { Say, Whisper, Yell, Emote, Ooc, Faction, Story, System }
 
 	public record ChatMessage(string Sender, string Text, MsgType Type, string Time, Color SenderColor);
 
-	// ═══ CHAT COLORS (from HUD v4) ═══
-	static readonly Color SayColor     = new("2D2D3D");
-	static readonly Color WhisperColor = new("7B4EA0");
-	static readonly Color YellColor    = new("C87020");
-	static readonly Color EmoteColor   = new("2D8A50");
-	static readonly Color OocColor     = new("4070B0");
-	static readonly Color SystemColor  = new("8A7A30");
-	static readonly Color FactionColor = new("C07020");
-	static readonly Color StoryColor   = new("7B4EA0");
-	static readonly Color SpeechWhite  = new("1A1A2E");
+	// ═══ CHAT COLORS — theme-aware ═══
+	static Color SayColor     => UITheme.IsDarkMode ? new Color("E0DCD6") : new Color("2D2D3D");
+	static Color WhisperColor => new Color("B07AE0");
+	static Color YellColor    => new Color("E8A040");
+	static Color EmoteColor   => new Color("50C878");
+	static Color OocColor     => new Color("78A8D0");
+	static Color SystemColor  => new Color("C8B060");
+	static Color FactionColor => new Color("E09040");
+	static Color StoryColor   => new Color("B07AE0");
+	static Color SpeechWhite  => UITheme.IsDarkMode ? new Color("EEEEE8") : new Color("1A1A2E");
 
 	// ═══ STATE ═══
 	readonly List<ChatMessage> _messages = new();
@@ -43,7 +46,7 @@ public partial class ChatPanel : Control
 	bool _settingsOpen = false;
 	bool _scrollLocked = false;
 	int _newMsgCount = 0;
-	Color _playerIcColor = new("2D2D3D");
+	Color _playerIcColor;
 	int _chatFontSize = 13;
 	float _idleTimer = 0f;
 	const float IdleTimeout = 8f;
@@ -111,6 +114,7 @@ public partial class ChatPanel : Control
 
 	public override void _Ready()
 	{
+		_playerIcColor = SayColor;
 		MouseFilter = MouseFilterEnum.Ignore;
 		BuildPanel();
 		BuildEmotePanel();
@@ -118,6 +122,40 @@ public partial class ChatPanel : Control
 		BuildProfilePopup();
 		BuildExportToast();
 		AddWelcomeMessages();
+
+		UITheme.ThemeChanged += OnThemeChanged;
+	}
+
+	public override void _ExitTree()
+	{
+		UITheme.ThemeChanged -= OnThemeChanged;
+	}
+
+	private void OnThemeChanged(bool _dark)
+	{
+		// Repaint panel background in-place
+		if (_panel != null)
+		{
+			var style = _panel.GetThemeStylebox("panel") as StyleBoxFlat;
+			if (style != null)
+			{
+				style.BgColor = UITheme.BgChat;
+				style.BorderColor = UITheme.BorderLight;
+			}
+		}
+
+		// Repaint input row styles in-place
+		_playerIcColor = SayColor;
+		_verbBtn?.AddThemeColorOverride("font_color", GetVerbColor(GetVerbs()[_currentVerb]));
+		_chatInput?.AddThemeColorOverride("font_color", UITheme.TextBright);
+		_chatInput?.AddThemeColorOverride("font_placeholder_color", UITheme.TextDim);
+		_messageLog?.AddThemeColorOverride("default_color", SayColor);
+
+		// Update tab colors
+		if (_currentTab != null) SetActiveTab(_currentTab);
+
+		// Refresh messages with new theme colors (keeps message list intact)
+		RefreshMessages();
 	}
 
 	public override void _Process(double delta)
@@ -136,12 +174,12 @@ public partial class ChatPanel : Control
 			_emoteResizing = false;
 		}
 
-		// Idle fade
+		// Idle fade — only if setting is enabled, always smooth via Lerp
 		_idleTimer += (float)delta;
-		if (_idleTimer > IdleTimeout && !IsUiFocused)
-		{
-			_panel.Modulate = _panel.Modulate.Lerp(new Color(1, 1, 1, 0.35f), (float)delta * 2);
-		}
+		float targetAlpha = 1.0f;
+		if (FadeWhenIdle && _idleTimer > IdleTimeout && !IsUiFocused)
+			targetAlpha = 0.35f;
+		_panel.Modulate = _panel.Modulate.Lerp(new Color(1, 1, 1, targetAlpha), (float)delta * 2);
 
 		// Chat bubble countdown
 		if (_bubbleTimer > 0)
@@ -181,7 +219,7 @@ public partial class ChatPanel : Control
 		_panel.MouseFilter = MouseFilterEnum.Stop;
 
 		var style = new StyleBoxFlat();
-		style.BgColor = UITheme.BgWhite;
+		style.BgColor = UITheme.BgChat;
 		style.CornerRadiusTopRight = 8;
 		style.BorderWidthTop = 1; style.BorderWidthRight = 1;
 		style.BorderColor = UITheme.BorderLight;
@@ -387,7 +425,7 @@ public partial class ChatPanel : Control
 		_tabRow.AddChild(spacer);
 
 		// Export button
-		_exportBtn = MakeUtilButton("📋", "Export chat log");
+		_exportBtn = MakeUtilButton("❐", "Export chat log");
 		_exportBtn.Pressed += OnExportPressed;
 		_tabRow.AddChild(_exportBtn);
 
@@ -397,7 +435,7 @@ public partial class ChatPanel : Control
 		_tabRow.AddChild(_settingsBtn);
 
 		// Collapse button
-		_collapseBtn = MakeUtilButton("▼", "Collapse chat");
+		_collapseBtn = MakeUtilButton("▾", "Collapse chat");
 		_collapseBtn.Pressed += ToggleCollapse;
 		_tabRow.AddChild(_collapseBtn);
 
@@ -443,7 +481,7 @@ public partial class ChatPanel : Control
 			bool active = tabId == id;
 			btn.AddThemeColorOverride("font_color", active ? UITheme.TextBright : UITheme.TextDim);
 			var s = new StyleBoxFlat();
-			s.BgColor = active ? new Color(0f, 0f, 0f, 0.04f) : Colors.Transparent;
+			s.BgColor = active ? UITheme.CardBg : Colors.Transparent;
 			s.SetCornerRadiusAll(3);
 			s.ContentMarginLeft = 8; s.ContentMarginRight = 8;
 			s.ContentMarginTop = 2; s.ContentMarginBottom = 2;
@@ -605,7 +643,7 @@ public partial class ChatPanel : Control
 
 		// Emote expand button ✎
 		_emoteExpandBtn = new Button();
-		_emoteExpandBtn.Text = "✎";
+		_emoteExpandBtn.Text = "✏";
 		_emoteExpandBtn.TooltipText = "Open long-form emote box";
 		_emoteExpandBtn.FocusMode = FocusModeEnum.None;
 		_emoteExpandBtn.CustomMinimumSize = new Vector2(32, 0);
@@ -704,17 +742,17 @@ public partial class ChatPanel : Control
 		vbox.AddChild(toolMargin);
 		toolMargin.AddChild(toolbar);
 
-		var boldBtn = MakeToolButton("B", "Bold (**text**)");
+		var boldBtn = MakeToolButton("𝗕", "Bold (**text**)");
 		boldBtn.Pressed += () => InsertFormat("**");
 		toolbar.AddChild(boldBtn);
 
-		var italicBtn = MakeToolButton("I", "Italic (*text*)");
+		var italicBtn = MakeToolButton("𝘐", "Italic (*text*)");
 		italicBtn.Pressed += () => InsertFormat("*");
 		toolbar.AddChild(italicBtn);
 
 		toolbar.AddChild(MakeToolSep());
 
-		var speechBtn = MakeToolButton("\" \"", "Speech (\"text\")");
+		var speechBtn = MakeToolButton("❝", "Speech (\"text\")");
 		speechBtn.Pressed += () => InsertQuote();
 		toolbar.AddChild(speechBtn);
 
@@ -732,7 +770,7 @@ public partial class ChatPanel : Control
 		_emoteTextarea.CustomMinimumSize = new Vector2(0, 80);
 		_emoteTextarea.AddThemeFontSizeOverride("font_size", 13);
 		_emoteTextarea.AddThemeColorOverride("font_color", EmoteColor);
-		_emoteTextarea.AddThemeColorOverride("font_placeholder_color", new Color(0.392f, 0.392f, 0.431f, 0.4f));
+		_emoteTextarea.AddThemeColorOverride("font_placeholder_color", UITheme.TextDim);
 		if (UITheme.FontBody != null) _emoteTextarea.AddThemeFontOverride("font", UITheme.FontBody);
 
 		var textareaStyle = new StyleBoxFlat();
@@ -743,7 +781,7 @@ public partial class ChatPanel : Control
 		textareaStyle.BorderColor = UITheme.BorderSubtle;
 		_emoteTextarea.AddThemeStyleboxOverride("normal", textareaStyle);
 		var textareaFocus = (StyleBoxFlat)textareaStyle.Duplicate();
-		textareaFocus.BorderColor = new Color(0.314f, 0.549f, 0.314f, 0.4f);
+		textareaFocus.BorderColor = UITheme.AccentEmeraldDim;
 		_emoteTextarea.AddThemeStyleboxOverride("focus", textareaFocus);
 
 		_emoteTextarea.FocusEntered += ResetIdle;
@@ -769,15 +807,15 @@ public partial class ChatPanel : Control
 		sendBtn.AddThemeColorOverride("font_color", EmoteColor);
 		if (UITheme.FontBody != null) sendBtn.AddThemeFontOverride("font", UITheme.FontBody);
 		var sendStyle = new StyleBoxFlat();
-		sendStyle.BgColor = new Color(0.314f, 0.549f, 0.314f, 0.2f);
+		sendStyle.BgColor = UITheme.AccentEmeraldDim;
 		sendStyle.SetCornerRadiusAll(4);
-		sendStyle.BorderColor = new Color(0.314f, 0.549f, 0.314f, 0.3f);
+		sendStyle.BorderColor = UITheme.AccentEmeraldDim;
 		sendStyle.SetBorderWidthAll(1);
 		sendStyle.ContentMarginLeft = 16; sendStyle.ContentMarginRight = 16;
 		sendStyle.ContentMarginTop = 4; sendStyle.ContentMarginBottom = 4;
 		sendBtn.AddThemeStyleboxOverride("normal", sendStyle);
 		var sendHover = (StyleBoxFlat)sendStyle.Duplicate();
-		sendHover.BgColor = new Color(0.314f, 0.549f, 0.314f, 0.3f);
+		sendHover.BgColor = new Color(UITheme.AccentEmerald, 0.3f);
 		sendBtn.AddThemeStyleboxOverride("hover", sendHover);
 		sendBtn.Pressed += SendEmote;
 		sendRow.AddChild(sendBtn);
@@ -1071,7 +1109,7 @@ public partial class ChatPanel : Control
 	private void ToggleCollapse()
 	{
 		_collapsed = !_collapsed;
-		_collapseBtn.Text = _collapsed ? "▲" : "▼";
+		_collapseBtn.Text = _collapsed ? "▴" : "▾";
 
 		// Show/hide message area and input area
 		var msgArea = _panelContent.GetNodeOrNull<MarginContainer>("MessageArea");
@@ -1230,20 +1268,30 @@ public partial class ChatPanel : Control
 	private void AppendFormatted(ChatMessage msg)
 	{
 		if (_messageLog == null) return;
-		string t = $"[color=#78736966]{msg.Time}[/color] ";
-		string sc = msg.SenderColor.ToHtml(false); // sender color hex
+		string timeHex = UITheme.TextDim.ToHtml(false);
+		string t = $"[color=#{timeHex}66]{msg.Time}[/color] ";
+		// Use current theme-aware SayColor for default text, stored color only if custom IC
+		string sc = msg.SenderColor == Colors.Transparent
+			? SayColor.ToHtml(false)
+			: msg.SenderColor.ToHtml(false);
 		string s = Esc(msg.Sender);
 		string tx = Esc(msg.Text);
 
+		// For Say/Emote, use current theme say color if sender color matches old theme
+		// This ensures text stays readable after theme switch
+		string sayHex = SayColor.ToHtml(false);
+		string emoteHex = EmoteColor.ToHtml(false);
+		string speechHex = SpeechWhite.ToHtml(false);
+
 		// For emotes, parse formatting: **bold**, *italic*, "speech"
-		string emoteText = ParseEmoteFormatting(msg.Text);
+		string emoteText = ParseEmoteFormatting(msg.Text, sayHex);
 
 		string bbcode = msg.Type switch
 		{
-			MsgType.Say => $"{t}[url={s}][b][color=#{sc}]{s}[/color][/b][/url]: [color=#{sc}]\"{ParseFormatting(tx)}\"[/color]",
+			MsgType.Say => $"{t}[url={s}][b][color=#{sayHex}]{s}[/color][/b][/url]: [color=#{sayHex}]\"{ParseFormatting(tx)}\"[/color]",
 			MsgType.Whisper => $"{t}[color=#{WhisperColor.ToHtml(false)}][font_size=10][Whisper][/font_size] [url={s}][b]{s}[/b][/url]: {ParseFormatting(tx)}[/color]",
 			MsgType.Yell => $"{t}[color=#{YellColor.ToHtml(false)}][font_size=10][Yell][/font_size] [url={s}][b]{s}[/b][/url]: {ParseFormatting(tx)}[/color]",
-			MsgType.Emote => $"{t}[color=#{sc}][i]★ [url={s}][b]{s}[/b][/url] {emoteText}[/i][/color]",
+			MsgType.Emote => $"{t}[color=#{emoteHex}][i]★ [url={s}][b]{s}[/b][/url] {emoteText}[/i][/color]",
 			MsgType.Ooc => $"{t}[color=#{OocColor.ToHtml(false)}][font_size=10][OOC][/font_size] [url={s}][b]{s}[/b][/url]: {ParseFormatting(tx)}[/color]",
 			MsgType.Faction => $"{t}[color=#{FactionColor.ToHtml(false)}]📢 [font_size=10][Faction][/font_size] [url={s}][b]{s}[/b][/url]: {Esc(msg.Text)}[/color]",
 			MsgType.Story => $"{t}[color=#{StoryColor.ToHtml(false)}]📖 [font_size=10][Story][/font_size] [i]{emoteText}[/i][/color]",
@@ -1265,16 +1313,15 @@ public partial class ChatPanel : Control
 	}
 
 	/// <summary>Parse emote text: "speech" in white, **bold**, *italic*.</summary>
-	private string ParseEmoteFormatting(string text)
+	private string ParseEmoteFormatting(string text, string emoteColorHex)
 	{
 		string html = Esc(text);
-		// Speech quotes → white
+		// Speech quotes → contrasting color
 		html = System.Text.RegularExpressions.Regex.Replace(html,
 			"\"(.+?)\"",
-			$"[/i][/color][color=#{SpeechWhite.ToHtml(false)}][b]\"$1\"[/b][/color][color=#{_playerIcColor.ToHtml(false)}][i]");
+			$"[/i][/color][color=#{SpeechWhite.ToHtml(false)}][b]\"$1\"[/b][/color][color=#{emoteColorHex}][i]");
 		// Bold
 		html = System.Text.RegularExpressions.Regex.Replace(html, @"\*\*(.+?)\*\*", "[b]$1[/b]");
-		// Italic (already in italic context for emotes, so skip)
 		return html;
 	}
 
@@ -1346,7 +1393,7 @@ public partial class ChatPanel : Control
 		s.ContentMarginTop = 2; s.ContentMarginBottom = 2;
 		btn.AddThemeStyleboxOverride("normal", s);
 		var h = (StyleBoxFlat)s.Duplicate();
-		h.BgColor = new Color(1, 1, 1, 0.04f);
+		h.BgColor = UITheme.CardHoverBg;
 		btn.AddThemeStyleboxOverride("hover", h);
 		btn.AddThemeStyleboxOverride("pressed", s);
 	}

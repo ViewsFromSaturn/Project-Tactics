@@ -50,7 +50,7 @@ public partial class PlayerController : CharacterBody2D
 		if (!_canMove) return;
 
 		// ═══ CRITICAL: Block movement when UI text fields are focused ═══
-		if (UI.ChatPanel.IsUiFocused)
+		if (UI.ChatPanel.IsUiFocused || UI.OverworldHUD.IsAnyTextFieldFocused)
 		{
 			// Decelerate to stop while typing
 			Velocity = Velocity.MoveToward(Vector2.Zero, (float)(Friction * delta));
@@ -91,7 +91,7 @@ public partial class PlayerController : CharacterBody2D
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
-		if (UI.ChatPanel.IsUiFocused) return;
+		if (UI.ChatPanel.IsUiFocused || UI.OverworldHUD.IsAnyTextFieldFocused) return;
 
 		if (@event.IsActionPressed("interact"))
 		{

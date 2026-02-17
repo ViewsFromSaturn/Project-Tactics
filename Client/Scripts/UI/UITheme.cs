@@ -21,10 +21,14 @@ public static class UITheme
 
 	public static bool IsDarkMode => _isDarkMode;
 
+	/// <summary>Fired when dark/light mode changes. All UI should rebuild.</summary>
+	public static event System.Action<bool> ThemeChanged;
+
 	public static void SetDarkMode(bool dark)
 	{
+		if (_isDarkMode == dark) return;
 		_isDarkMode = dark;
-		// TODO: emit signal / event for live UI refresh
+		ThemeChanged?.Invoke(dark);
 	}
 
 	/// <summary>Pick between dark and light color based on current mode.</summary>
@@ -44,6 +48,7 @@ public static class UITheme
 	// Light: #FFFFFF
 	public static Color BgPanel      => Pick(new Color(8/255f, 8/255f, 18/255f, 0.85f), new Color("FFFFFF"));
 	public static Color BgWhite      => Pick(new Color(8/255f, 8/255f, 18/255f, 0.85f), new Color("FFFFFF"));
+	public static Color BgChat       => Pick(new Color(8/255f, 8/255f, 18/255f, 0.85f), new Color("FAFAFA"));
 
 	// Dark: #1A3C4150 (WPF CardBackground — 10% opacity)
 	// Light: #F5F5F7
@@ -53,11 +58,23 @@ public static class UITheme
 	// Light: rgba(0,0,0,0.04)
 	public static Color CardHoverBg  => Pick(new Color(60/255f, 65/255f, 80/255f, 0.15f), new Color(0,0,0, 0.04f));
 
-	public static Color BgInput      => Pick(new Color(60/255f, 65/255f, 80/255f, 0.10f), new Color("F5F5F7"));
+	public static Color BgInput      => Pick(new Color(60/255f, 65/255f, 80/255f, 0.10f), new Color("EFEFEF"));
 	public static Color BgInputFocus => Pick(new Color(60/255f, 65/255f, 80/255f, 0.20f), new Color("FFFFFF"));
 	public static Color BgSidebar    => Pick(new Color("080812"), new Color("F5F5F7"));
 	public static Color BgIconBtn    => Pick(new Color(60/255f, 65/255f, 80/255f, 0.10f), new Color("F0F0F2"));
 	public static Color BgIconBtnActive => Pick(new Color(60/255f, 65/255f, 80/255f, 0.20f), new Color("E0E0E4"));
+
+	// FloatingWindow glass
+	public static Color BgGlass      => Pick(new Color(0.031f, 0.031f, 0.071f, 0.85f), new Color("FFFFFF"));
+	public static Color BgTitleBar   => Pick(new Color(0.031f, 0.031f, 0.071f, 0.08f), new Color("F5F5F7"));
+	public static Color GlassBorder  => Pick(new Color(0.235f, 0.255f, 0.314f, 0.35f), new Color("D0D0D5"));
+	public static Color GlassShadow  => Pick(new Color(0, 0, 0, 0.4f), new Color(0, 0, 0, 0.12f));
+
+	// Sidebar glass buttons
+	public static Color SidebarBtnNormal  => Pick(new Color(0.05f, 0.05f, 0.1f, 0.3f), new Color(1f, 1f, 1f, 0.7f));
+	public static Color SidebarBtnHover   => Pick(new Color(0.1f, 0.1f, 0.2f, 0.5f), new Color(1f, 1f, 1f, 0.85f));
+	public static Color SidebarBtnPressed => Pick(new Color(0.15f, 0.15f, 0.25f, 0.6f), new Color(0.95f, 0.95f, 1f, 0.9f));
+	public static Color SidebarBtnBorder  => Pick(new Color(1f, 1f, 1f, 0.08f), new Color(0f, 0f, 0f, 0.08f));
 
 	// Legacy aliases
 	public static Color BgDark       => BgPage;
@@ -72,11 +89,11 @@ public static class UITheme
 	// Light: rgba black at low opacity
 	public static Color BorderSubtle => Pick(
 		new Color(60/255f, 65/255f, 80/255f, 0.35f),
-		new Color(0, 0, 0, 0.06f));
+		new Color(0, 0, 0, 0.10f));
 
 	public static Color BorderMedium => Pick(
 		new Color(60/255f, 65/255f, 80/255f, 0.50f),
-		new Color(0, 0, 0, 0.10f));
+		new Color(0, 0, 0, 0.15f));
 
 	public static Color BorderBright => Pick(
 		new Color(60/255f, 65/255f, 80/255f, 0.70f),

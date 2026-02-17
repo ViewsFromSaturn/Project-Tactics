@@ -5,72 +5,80 @@ using System.Collections.Generic;
 namespace ProjectTactics.UI;
 
 /// <summary>
-/// Overworld HUD — Identity bar (top-left), sidebar icon buttons (right edge),
-/// floating window manager (multiple can be open), chat bubble on player.
-///
-/// KEY CHANGES from old version:
-/// - WindowPanel (floating/draggable) replaces SlidePanel (slide-from-edge)
-/// - Multiple windows can be open simultaneously
-/// - Sidebar icons match Taskade mockup Image 2
-/// - Dark/light mode support via UITheme
+/// Overworld HUD — identity bar, sidebar icons, floating window manager,
+/// chat bubble, global UI focus tracking, theme change support.
 /// </summary>
 public partial class OverworldHUD : Control
 {
-	// Identity bar elements
-	private Label _nameLabel;
-	private Label _rankLabel;
-	private Label _tpLabel;
-	private TextureRect _hpFill;
-	private TextureRect _staFill;
-	private TextureRect _ethFill;
-	private Label _hpValue;
-	private Label _staValue;
-	private Label _ethValue;
+	// ═══ GLOBAL UI FOCUS ═══
+	public static bool IsAnyTextFieldFocused { get; private set; } = false;
 
+	/// <summary>Singleton reference for external callers (ProfilePopup, etc.).</summary>
+	public static OverworldHUD Instance { get; private set; }
+
+	/// <summary>Open a panel by id from external code.</summary>
+	public void OpenPanel(string id)
+	{
+		if (!_openWindows.ContainsKey(id))
+			ToggleWindow(id);
+	}
+
+	/// <summary>Close a panel by id from external code.</summary>
+	public void ClosePanel(string id)
+	{
+		if (_openWindows.ContainsKey(id))
+			ToggleWindow(id);
+	}
+
+	private Label _nameLabel, _rankLabel, _tpLabel;
+	private TextureRect _hpFill, _staFill, _ethFill;
+	private Label _hpValue, _staValue, _ethValue;
 	private const float BarTrackWidth = 160f;
 
-	// Idle fade refs
 	private PanelContainer _identityBarPanel;
 	private VBoxContainer _sidebarContainer;
 	private float _hudIdleTimer = 0f;
 	private const float HudIdleTimeout = 8f;
 
-	// ═══ WINDOW SYSTEM (replaces single-panel system) ═══
-	private readonly Dictionary<string, Panels.WindowPanel> _windows = new();
+	private readonly Dictionary<string, FloatingWindow> _openWindows = new();
 
-	// Panel definitions — order matches Taskade mockup sidebar, top to bottom.
-	// Icons loaded from res://Assets/Icons/ (Lucide PNGs).
 	private readonly List<(string id, string iconPath, string tooltip, Key hotkey)> _panelDefs = new()
 	{
-		("journal",   "res://Assets/Icons/icon_chronicle.png",  "Chronicle Keeper  [J]",  Key.J),
 		("charsheet", "res://Assets/Icons/icon_character.png",   "Character Sheet  [C]",   Key.C),
 		("training",  "res://Assets/Icons/icon_training.png",    "Daily Training  [V]",    Key.V),
+		("journal",   "res://Assets/Icons/icon_journal.png",     "Journal  [J]",            Key.J),
+		("chronicle", "res://Assets/Icons/icon_chronicle.png",   "Chronicle Keeper  [K]",   Key.K),
 		("map",       "res://Assets/Icons/icon_map.png",          "World Map  [M]",          Key.M),
 		("mentor",    "res://Assets/Icons/icon_mentorship.png",  "Mentorship  [N]",        Key.N),
 		("inventory", "res://Assets/Icons/icon_inventory.png",    "Inventory  [I]",          Key.I),
 		("settings",  "res://Assets/Icons/icon_settings.png",    "Settings  [Esc]",        Key.Escape),
 	};
 
-	// Chat bubble (positioned above player sprite)
 	private Label _chatBubble;
 	private PanelContainer _chatBubbleBg;
 
 	public override void _Ready()
 	{
+		Instance = this;
 		MouseFilter = MouseFilterEnum.Ignore;
 		SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 		BuildIdentityBar();
 		BuildSidebar();
-		BuildWindows();
 		HideDebugOverlay();
 		SetupChatBubble();
+		UITheme.ThemeChanged += OnThemeChanged;
+	}
+
+	public override void _ExitTree()
+	{
+		UITheme.ThemeChanged -= OnThemeChanged;
 	}
 
 	public override void _Process(double delta)
 	{
 		UpdateBars();
+		UpdateGlobalFocusState();
 
-		// Idle fade for identity bar and sidebar
 		_hudIdleTimer += (float)delta;
 		bool isIdle = _hudIdleTimer > HudIdleTimeout && !ChatPanel.IsUiFocused;
 		float targetAlpha = isIdle ? 0.35f : 1.0f;
@@ -90,23 +98,16 @@ public partial class OverworldHUD : Control
 	public override void _UnhandledInput(InputEvent ev)
 	{
 		if (ev is not InputEventKey key || !key.Pressed || key.Echo) return;
-		if (ChatPanel.IsUiFocused) return;
+		if (ChatPanel.IsUiFocused || IsAnyTextFieldFocused) return;
 
-		// Esc: close all windows, or open settings if none are open
 		if (key.Keycode == Key.Escape)
 		{
-			bool anyOpen = false;
-			foreach (var (_, win) in _windows)
-			{
-				if (win.IsOpen) { win.Close(); anyOpen = true; }
-			}
-			if (!anyOpen)
-				ToggleWindow("settings");
+			if (_openWindows.Count > 0) CloseAllWindows();
+			else ToggleWindow("settings");
 			GetViewport().SetInputAsHandled();
 			return;
 		}
 
-		// Other hotkeys — toggle individual windows
 		foreach (var (id, _, _, hotkey) in _panelDefs)
 		{
 			if (key.Keycode == hotkey && hotkey != Key.Escape)
@@ -118,9 +119,29 @@ public partial class OverworldHUD : Control
 		}
 	}
 
-	// ═════════════════════════════════════════════════════════
-	//  IDENTITY BAR (top-left) — same structure, themed
-	// ═════════════════════════════════════════════════════════
+	// ═══ GLOBAL FOCUS ═══
+
+	private void UpdateGlobalFocusState()
+	{
+		var focused = GetViewport()?.GuiGetFocusOwner();
+		IsAnyTextFieldFocused = focused is LineEdit || focused is TextEdit;
+	}
+
+	// ═══ THEME CHANGE ═══
+
+	private void OnThemeChanged(bool dark)
+	{
+		// Rebuild identity bar + sidebar with new colors
+		if (_identityBarPanel != null) { _identityBarPanel.QueueFree(); _identityBarPanel = null; }
+		BuildIdentityBar();
+
+		if (_sidebarContainer != null) { _sidebarContainer.QueueFree(); _sidebarContainer = null; }
+		BuildSidebar();
+
+		// FloatingWindows handle their own repaint via UITheme.ThemeChanged
+	}
+
+	// ═══ IDENTITY BAR ═══
 
 	private void BuildIdentityBar()
 	{
@@ -147,44 +168,46 @@ public partial class OverworldHUD : Control
 		panel.MouseEntered += () => _hudIdleTimer = 0f;
 		AddChild(panel);
 
-		var vbox = new VBoxContainer();
-		vbox.AddThemeConstantOverride("separation", 6);
-		panel.AddChild(vbox);
+		var outerVbox = new VBoxContainer();
+		outerVbox.AddThemeConstantOverride("separation", 4);
+		panel.AddChild(outerVbox);
 
-		// Top row: icon, name, rank, spacer, TP
 		var topRow = new HBoxContainer();
 		topRow.AddThemeConstantOverride("separation", 8);
-		vbox.AddChild(topRow);
+		outerVbox.AddChild(topRow);
 
-		// Crown icon (from Lucide)
 		var crownIcon = new TextureRect();
-		crownIcon.CustomMinimumSize = new Vector2(18, 18);
+		crownIcon.CustomMinimumSize = new Vector2(24, 24);
 		crownIcon.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
-		if (ResourceLoader.Exists("res://Assets/Icons/icon_crown.png"))
+		crownIcon.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+		if (ResourceLoader.Exists("res://Assets/Icons/icon_gold_crown.png"))
+			crownIcon.Texture = GD.Load<Texture2D>("res://Assets/Icons/icon_gold_crown.png");
+		else if (ResourceLoader.Exists("res://Assets/Icons/icon_crown.png"))
 			crownIcon.Texture = GD.Load<Texture2D>("res://Assets/Icons/icon_crown.png");
 		topRow.AddChild(crownIcon);
 
+		var nameStack = new VBoxContainer();
+		nameStack.AddThemeConstantOverride("separation", 0);
+		nameStack.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		topRow.AddChild(nameStack);
+
 		_nameLabel = new Label();
 		_nameLabel.Text = "...";
-		_nameLabel.AddThemeFontSizeOverride("font_size", 14);
+		_nameLabel.AddThemeFontSizeOverride("font_size", 16);
 		_nameLabel.AddThemeColorOverride("font_color", UITheme.TextBright);
 		if (UITheme.FontTitleMedium != null) _nameLabel.AddThemeFontOverride("font", UITheme.FontTitleMedium);
-		topRow.AddChild(_nameLabel);
+		nameStack.AddChild(_nameLabel);
 
 		_rankLabel = new Label();
 		_rankLabel.Text = "";
-		_rankLabel.AddThemeFontSizeOverride("font_size", 10);
-		_rankLabel.AddThemeColorOverride("font_color", UITheme.TextDim);
+		_rankLabel.AddThemeFontSizeOverride("font_size", 11);
+		_rankLabel.AddThemeColorOverride("font_color", UITheme.AccentGold);
 		if (UITheme.FontBody != null) _rankLabel.AddThemeFontOverride("font", UITheme.FontBody);
-		topRow.AddChild(_rankLabel);
+		nameStack.AddChild(_rankLabel);
 
-		var spacer = new Control();
-		spacer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-		topRow.AddChild(spacer);
-
-		// TP indicator
 		var tpBox = new HBoxContainer();
 		tpBox.AddThemeConstantOverride("separation", 4);
+		tpBox.SizeFlagsVertical = SizeFlags.ShrinkCenter;
 		topRow.AddChild(tpBox);
 
 		var tpDot = new ColorRect();
@@ -200,38 +223,32 @@ public partial class OverworldHUD : Control
 		if (UITheme.FontNumbersMedium != null) _tpLabel.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
 		tpBox.AddChild(_tpLabel);
 
-		// Resource bars
 		var barsVbox = new VBoxContainer();
 		barsVbox.AddThemeConstantOverride("separation", 3);
-		vbox.AddChild(barsVbox);
+		outerVbox.AddChild(barsVbox);
 
 		(_hpFill, _hpValue) = CreateBar(barsVbox, "HP",
 			new Color("B03030"), new Color("E04040"), new Color("F06060"));
-
 		(_staFill, _staValue) = CreateBar(barsVbox, "STA",
 			new Color("C08020"), new Color("E8A030"), new Color("F0B848"));
-
 		(_ethFill, _ethValue) = CreateBar(barsVbox, "ETH",
 			new Color("3060A0"), new Color("4080D0"), new Color("5898E0"));
 	}
 
 	private (TextureRect fill, Label value) CreateBar(VBoxContainer parent, string label,
-		Color fillColorStart, Color fillColorMid, Color fillColorEnd)
+		Color fillStart, Color fillMid, Color fillEnd)
 	{
 		var row = new HBoxContainer();
 		row.AddThemeConstantOverride("separation", 6);
 		row.CustomMinimumSize = new Vector2(0, 14);
 		parent.AddChild(row);
 
-		// Bar label color matches the fill
-		Color textColor = fillColorMid;
-
 		var lbl = new Label();
 		lbl.Text = label;
 		lbl.CustomMinimumSize = new Vector2(26, 0);
 		lbl.HorizontalAlignment = HorizontalAlignment.Right;
 		lbl.AddThemeFontSizeOverride("font_size", 9);
-		lbl.AddThemeColorOverride("font_color", textColor);
+		lbl.AddThemeColorOverride("font_color", fillMid);
 		if (UITheme.FontNumbersMedium != null) lbl.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
 		row.AddChild(lbl);
 
@@ -241,123 +258,107 @@ public partial class OverworldHUD : Control
 		track.SizeFlagsVertical = SizeFlags.ShrinkCenter;
 
 		var trackStyle = new StyleBoxFlat();
-		trackStyle.BgColor = UITheme.CardBg;
-		trackStyle.SetCornerRadiusAll(2);
-		trackStyle.BorderColor = UITheme.BorderSubtle;
+		trackStyle.BgColor = UITheme.IsDarkMode
+			? new Color(0.12f, 0.12f, 0.18f, 0.5f)
+			: new Color(0, 0, 0, 0.08f);
+		trackStyle.SetCornerRadiusAll(3);
+		trackStyle.BorderColor = UITheme.IsDarkMode
+			? new Color(1f, 1f, 1f, 0.04f)
+			: new Color(0, 0, 0, 0.06f);
 		trackStyle.SetBorderWidthAll(1);
 		track.AddThemeStyleboxOverride("panel", trackStyle);
 		row.AddChild(track);
 
-		// Gradient fill
 		var fill = new TextureRect();
-		fill.CustomMinimumSize = new Vector2(0, 6);
-		fill.SizeFlagsVertical = SizeFlags.ShrinkCenter;
-		fill.StretchMode = TextureRect.StretchModeEnum.Scale;
-		fill.SetAnchorsAndOffsetsPreset(LayoutPreset.LeftWide);
-		fill.OffsetTop = 1; fill.OffsetBottom = -1; fill.OffsetLeft = 1;
+		fill.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+		fill.AnchorRight = 1.0f;
+		fill.OffsetLeft = 1; fill.OffsetTop = 1;
+		fill.OffsetRight = -1; fill.OffsetBottom = -1;
+		fill.MouseFilter = MouseFilterEnum.Ignore;
 
-		var gradient = new Gradient();
-		gradient.SetColor(0, fillColorStart);
-		gradient.AddPoint(0.6f, fillColorMid);
-		gradient.SetColor(gradient.GetPointCount() - 1, fillColorEnd);
-
-		var gradTex = new GradientTexture1D();
-		gradTex.Gradient = gradient;
-		gradTex.Width = 128;
+		var gradTex = new GradientTexture2D();
+		var grad = new Gradient();
+		grad.SetColor(0, fillStart);
+		grad.AddPoint(0.5f, fillMid);
+		grad.SetColor(2, fillEnd);
+		gradTex.Gradient = grad;
+		gradTex.Width = 128; gradTex.Height = 4;
 		fill.Texture = gradTex;
+		fill.StretchMode = TextureRect.StretchModeEnum.Scale;
 		track.AddChild(fill);
 
-		// Shine overlay
 		var shine = new ColorRect();
 		shine.SetAnchorsAndOffsetsPreset(LayoutPreset.TopWide);
-		shine.OffsetBottom = 3;
+		shine.AnchorBottom = 0.4f;
 		shine.OffsetLeft = 1;
 		shine.Color = new Color(1f, 1f, 1f, 0.12f);
 		shine.MouseFilter = MouseFilterEnum.Ignore;
 		fill.AddChild(shine);
 
 		var val = new Label();
-		val.Text = "0 / 0";
+		val.Text = "0/0";
 		val.CustomMinimumSize = new Vector2(60, 0);
 		val.HorizontalAlignment = HorizontalAlignment.Right;
 		val.AddThemeFontSizeOverride("font_size", 10);
-		val.AddThemeColorOverride("font_color", textColor);
+		val.AddThemeColorOverride("font_color", fillMid);
 		if (UITheme.FontNumbersMedium != null) val.AddThemeFontOverride("font", UITheme.FontNumbersMedium);
 		row.AddChild(val);
 
 		return (fill, val);
 	}
 
-	// ═════════════════════════════════════════════════════════
-	//  SIDEBAR (right edge — vertical icon buttons)
-	// ═════════════════════════════════════════════════════════
+	// ═══ SIDEBAR ═══
 
 	private void BuildSidebar()
 	{
-		// Container strip along right edge
-		var strip = new PanelContainer();
-		strip.SetAnchorsAndOffsetsPreset(LayoutPreset.RightWide);
-		strip.CustomMinimumSize = new Vector2(56, 0);
-		strip.OffsetLeft = -56;
-		strip.MouseFilter = MouseFilterEnum.Stop;
-
-		// Sidebar background
-		var stripStyle = new StyleBoxFlat();
-		stripStyle.BgColor = UITheme.BgSidebar;
-		stripStyle.BorderWidthLeft = 1;
-		stripStyle.BorderColor = UITheme.BorderSubtle;
-		stripStyle.ContentMarginTop = 12;
-		stripStyle.ContentMarginBottom = 12;
-		strip.AddThemeStyleboxOverride("panel", stripStyle);
-		strip.MouseEntered += () => _hudIdleTimer = 0f;
-		AddChild(strip);
-
 		var vbox = new VBoxContainer();
 		_sidebarContainer = vbox;
-		vbox.AddThemeConstantOverride("separation", 4);
+		vbox.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterRight);
+		vbox.GrowHorizontal = GrowDirection.Begin;
+		vbox.OffsetLeft = -52;
+		vbox.OffsetRight = -8;
+		vbox.AddThemeConstantOverride("separation", 6);
 		vbox.Alignment = BoxContainer.AlignmentMode.Center;
-		strip.AddChild(vbox);
+		vbox.MouseEntered += () => _hudIdleTimer = 0f;
+		AddChild(vbox);
 
 		foreach (var (id, iconPath, tooltip, _) in _panelDefs)
 		{
-			var btn = CreateIconButton(iconPath, tooltip);
+			var btn = CreateGlassIconButton(iconPath, tooltip);
 			btn.Pressed += () => ToggleWindow(id);
 			vbox.AddChild(btn);
 		}
 	}
 
-	/// <summary>
-	/// Creates a 44x44 icon button with a Lucide PNG texture inside.
-	/// Matches Taskade mockup: rounded square, light/dark bg, centered icon.
-	/// </summary>
-	private Button CreateIconButton(string iconPath, string tooltip)
+	private Button CreateGlassIconButton(string iconPath, string tooltip)
 	{
 		var btn = new Button();
 		btn.TooltipText = tooltip;
 		btn.CustomMinimumSize = new Vector2(44, 44);
 		btn.MouseFilter = MouseFilterEnum.Stop;
-
-		// Clear any text
 		btn.Text = "";
 
-		// Style: rounded square matching sidebar mockup
-		var style = new StyleBoxFlat();
-		style.BgColor = UITheme.BgIconBtn;
-		style.SetCornerRadiusAll(10);
-		style.BorderColor = UITheme.BorderSubtle;
-		style.SetBorderWidthAll(1);
-		btn.AddThemeStyleboxOverride("normal", style);
+		var normal = new StyleBoxFlat();
+		normal.BgColor = UITheme.SidebarBtnNormal;
+		normal.SetCornerRadiusAll(10);
+		normal.SetBorderWidthAll(1);
+		normal.BorderColor = UITheme.SidebarBtnBorder;
+		btn.AddThemeStyleboxOverride("normal", normal);
 
-		var hover = (StyleBoxFlat)style.Duplicate();
-		hover.BgColor = UITheme.BgIconBtnActive;
-		hover.BorderColor = UITheme.BorderMedium;
+		var hover = new StyleBoxFlat();
+		hover.BgColor = UITheme.SidebarBtnHover;
+		hover.SetCornerRadiusAll(10);
+		hover.SetBorderWidthAll(1);
+		hover.BorderColor = UITheme.SidebarBtnBorder;
 		btn.AddThemeStyleboxOverride("hover", hover);
 
-		var press = (StyleBoxFlat)style.Duplicate();
-		press.BgColor = UITheme.IsDarkMode ? UITheme.BorderSubtle : new Color("D8D8DC");
-		btn.AddThemeStyleboxOverride("pressed", press);
+		var pressed = new StyleBoxFlat();
+		pressed.BgColor = UITheme.SidebarBtnPressed;
+		pressed.SetCornerRadiusAll(10);
+		pressed.SetBorderWidthAll(1);
+		pressed.BorderColor = UITheme.SidebarBtnBorder;
+		btn.AddThemeStyleboxOverride("pressed", pressed);
 
-		// Load icon texture
 		if (ResourceLoader.Exists(iconPath))
 		{
 			var tex = GD.Load<Texture2D>(iconPath);
@@ -366,13 +367,11 @@ public partial class OverworldHUD : Control
 				btn.Icon = tex;
 				btn.IconAlignment = HorizontalAlignment.Center;
 				btn.ExpandIcon = true;
-				// Fit icon inside button with padding
 				btn.AddThemeConstantOverride("icon_max_width", 22);
 			}
 		}
 		else
 		{
-			GD.PrintErr($"[OverworldHUD] Icon not found: {iconPath}");
 			btn.Text = "?";
 			btn.AddThemeFontSizeOverride("font_size", 16);
 			btn.AddThemeColorOverride("font_color", UITheme.TextSecondary);
@@ -381,50 +380,65 @@ public partial class OverworldHUD : Control
 		return btn;
 	}
 
-	// ═════════════════════════════════════════════════════════
-	//  WINDOW MANAGEMENT (multiple can be open)
-	// ═════════════════════════════════════════════════════════
+	// ═══ WINDOW MANAGEMENT ═══
 
-	private void BuildWindows()
-	{
-		RegisterWindow("charsheet", new Panels.CharacterSheetPanel());
-		RegisterWindow("training",  new Panels.TrainingPanel());
-		RegisterWindow("journal",   new Panels.JournalPanel());
-		RegisterWindow("map",       new Panels.MapPanel());
-		RegisterWindow("inventory", new Panels.InventoryPanel());
-		RegisterWindow("mentor",    new Panels.MentorPanel());
-		RegisterWindow("settings",  new Panels.SettingsPanel());
-	}
-
-	private void RegisterWindow(string id, Panels.WindowPanel window)
-	{
-		_windows[id] = window;
-		AddChild(window);
-	}
-
-	/// <summary>
-	/// Toggle a floating window. Multiple can be open at once.
-	/// If already open, close it. If closed, open it.
-	/// </summary>
 	private void ToggleWindow(string id)
 	{
-		if (!_windows.ContainsKey(id)) return;
+		if (_openWindows.TryGetValue(id, out var existing))
+		{
+			existing.CloseWindow();
+			return;
+		}
 
-		var win = _windows[id];
-		if (win.IsOpen)
-			win.Close();
-		else
-			win.Open();
+		Panels.WindowPanel panel = id switch
+		{
+			"charsheet" => new Panels.CharacterSheetPanel(),
+			"training"  => new Panels.TrainingPanel(),
+			"journal"   => new Panels.JournalPanel(),
+			"chronicle" => new Panels.ChronicleKeeperPanel(),
+			"map"       => new Panels.MapPanel(),
+			"inventory" => new Panels.InventoryPanel(),
+			"mentor"    => new Panels.MentorPanel(),
+			"settings"       => new Panels.SettingsPanel(),
+			"icprofile"      => new Panels.ICProfilePanel(editMode: true),
+			"icprofile_view" => new Panels.ICProfilePanel(editMode: false),
+			_ => null
+		};
+
+		if (panel == null) return;
+
+		int offsetIndex = _openWindows.Count;
+		Vector2 offset = new Vector2(30 * offsetIndex, 30 * offsetIndex);
+
+		var window = FloatingWindow.Open(
+			this, panel.PanelTitle, panel,
+			panel.DefaultWidth, panel.DefaultHeight
+		);
+
+		panel.CallDeferred(nameof(Panels.WindowPanel.DeferredOpen));
+
+		if (panel.DefaultPosition != Vector2.Zero)
+			window.CallDeferred(nameof(FloatingWindow.SetWindowPosition), panel.DefaultPosition);
+		else if (offsetIndex > 0)
+		{
+			var viewport = GetViewportRect().Size;
+			var centered = (viewport - new Vector2(panel.DefaultWidth, panel.DefaultHeight)) / 2f;
+			window.CallDeferred(nameof(FloatingWindow.SetWindowPosition), centered + offset);
+		}
+
+		_openWindows[id] = window;
+		window.WindowClosed += () => _openWindows.Remove(id);
 	}
 
-	// ═════════════════════════════════════════════════════════
-	//  CHAT BUBBLE (on player sprite)
-	// ═════════════════════════════════════════════════════════
-
-	private void SetupChatBubble()
+	private void CloseAllWindows()
 	{
-		CallDeferred(nameof(LinkChatBubble));
+		foreach (var (_, window) in new Dictionary<string, FloatingWindow>(_openWindows))
+			window.CloseWindow();
 	}
+
+	// ═══ CHAT BUBBLE ═══
+
+	private void SetupChatBubble() => CallDeferred(nameof(LinkChatBubble));
 
 	private void LinkChatBubble()
 	{
@@ -460,22 +474,12 @@ public partial class OverworldHUD : Control
 			_chatBubbleBg.Visible = false;
 			_chatBubbleBg.Name = "BubbleBg";
 			_chatBubbleBg.AddChild(_chatBubble);
-			_chatBubble.Position = Vector2.Zero;
 
 			player.AddChild(_chatBubbleBg);
-
 			chatPanel.ChatBubbleLabel = _chatBubble;
 			chatPanel.ChatBubbleBg = _chatBubbleBg;
 		}
-		else
-		{
-			GD.Print("[OverworldHUD] Player node not found for chat bubble.");
-		}
 	}
-
-	// ═════════════════════════════════════════════════════════
-	//  HIDE DEBUG OVERLAY
-	// ═════════════════════════════════════════════════════════
 
 	private void HideDebugOverlay()
 	{
@@ -487,9 +491,7 @@ public partial class OverworldHUD : Control
 		}
 	}
 
-	// ═════════════════════════════════════════════════════════
-	//  UPDATE LOOP
-	// ═════════════════════════════════════════════════════════
+	// ═══ UPDATE ═══
 
 	private void UpdateBars()
 	{
@@ -497,19 +499,19 @@ public partial class OverworldHUD : Control
 		if (p == null) return;
 
 		_nameLabel.Text = p.CharacterName;
-		_rankLabel.Text = p.RpRank?.ToUpper() ?? "";
+		_rankLabel.Text = p.RpRank ?? "";
 		_tpLabel.Text = $"{p.DailyPointsRemaining} TP";
 
 		float hpPct = p.MaxHp > 0 ? (float)p.CurrentHp / p.MaxHp : 0;
 		_hpFill.AnchorRight = Math.Clamp(hpPct, 0f, 1f);
-		_hpValue.Text = $"{p.CurrentHp} / {p.MaxHp}";
+		_hpValue.Text = $"{p.CurrentHp}/{p.MaxHp}";
 
 		int maxSta = (int)(p.Stamina * 10 + 50);
 		_staFill.AnchorRight = 1.0f;
-		_staValue.Text = $"{maxSta} / {maxSta}";
+		_staValue.Text = $"{maxSta}/{maxSta}";
 
 		float ethPct = p.MaxEther > 0 ? (float)p.CurrentEther / p.MaxEther : 0;
 		_ethFill.AnchorRight = Math.Clamp(ethPct, 0f, 1f);
-		_ethValue.Text = $"{p.CurrentEther} / {p.MaxEther}";
+		_ethValue.Text = $"{p.CurrentEther}/{p.MaxEther}";
 	}
 }
