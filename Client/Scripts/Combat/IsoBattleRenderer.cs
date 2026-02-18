@@ -13,6 +13,7 @@ public partial class IsoBattleRenderer : Node3D
 {
 	[Signal] public delegate void TileClickedEventHandler(int x, int y);
 	[Signal] public delegate void TileHoveredEventHandler(int x, int y);
+	[Signal] public delegate void TileRightClickedEventHandler(int x, int y);
 
 	// ─── CONFIG ──────────────────────────────────────────
 	private const float TileSize = 1.0f;
@@ -534,6 +535,12 @@ public partial class IsoBattleRenderer : Node3D
 				EmitSignal(SignalName.TileClicked, gridPos.X, gridPos.Y);
 			}
 		}
+		else if (ev is InputEventMouseButton rb && rb.Pressed && rb.ButtonIndex == MouseButton.Right)
+		{
+			var gridPos = ScreenToGrid(rb.Position);
+			if (_grid.InBounds(gridPos))
+				EmitSignal(SignalName.TileRightClicked, gridPos.X, gridPos.Y);
+		}
 	}
 
 	private Vector2I ScreenToGrid(Vector2 screenPos)
@@ -543,27 +550,35 @@ public partial class IsoBattleRenderer : Node3D
 		var from = _camera.ProjectRayOrigin(screenPos);
 		var dir = _camera.ProjectRayNormal(screenPos);
 
+		if (Mathf.Abs(dir.Y) < 0.001f) return new(-1, -1);
+
+		// Instead of checking each height plane separately, check all tiles
+		// by projecting the ray onto each tile's actual height plane
 		Vector2I bestTile = new(-1, -1);
 		float bestDist = float.MaxValue;
 
-		for (int h = 5; h >= 0; h--)
+		for (int x = 0; x < _grid.Width; x++)
+		for (int y = 0; y < _grid.Height; y++)
 		{
-			float planeY = h * HeightStep + TileTopThick * 0.5f;
-			if (Mathf.Abs(dir.Y) < 0.001f) continue;
+			var tile = _grid.At(x, y);
+			if (tile == null) continue;
+
+			float planeY = tile.Height * HeightStep + TileTopThick * 0.5f;
 			float t = (planeY - from.Y) / dir.Y;
 			if (t < 0) continue;
 
 			var hitPoint = from + dir * t;
-			var gridPos = WorldToGrid(hitPoint);
+			var worldPos = GridToWorld(x, y, tile.Height);
 
-			if (_grid.InBounds(gridPos))
+			// Check if hit point is within this tile's bounds (half tile size)
+			float halfTile = (TileSize - TileGap) * 0.5f;
+			float dx = Mathf.Abs(hitPoint.X - worldPos.X);
+			float dz = Mathf.Abs(hitPoint.Z - worldPos.Z);
+
+			if (dx <= halfTile && dz <= halfTile && t < bestDist)
 			{
-				var tile = _grid.At(gridPos);
-				if (tile != null && tile.Height == h && t < bestDist)
-				{
-					bestDist = t;
-					bestTile = gridPos;
-				}
+				bestDist = t;
+				bestTile = new Vector2I(x, y);
 			}
 		}
 

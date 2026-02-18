@@ -3,69 +3,167 @@ using System.Collections.Generic;
 
 namespace ProjectTactics.Combat;
 
+/// <summary>
+/// Battle Manager — overlays on top of the overworld scene.
+/// Call BattleManager.StartBattle() to add it, EndBattle() to remove it.
+/// The overworld HUD sidebar collapses, identity bar hides, chat stays.
+/// </summary>
 public partial class BattleManager : Node3D
 {
 	public enum BattleState { Setup, CommandMenu, MovePhase, TargetPhase, Resolution, BattleOver }
 
-	private BattleGrid _grid;
-	private TurnQueue _turnQueue;
-	private IsoBattleRenderer _renderer;
-	private BattleHUD _hud;
-	private Camera3D _camera;
-	private BattleState _state = BattleState.Setup;
-	private BattleUnit _activeUnit;
-	private readonly List<BattleUnit> _units = new();
+	BattleGrid _grid;
+	TurnQueue _turnQueue;
+	IsoBattleRenderer _renderer;
+	BattleHUD _hud;
+	Camera3D _camera;
+	BattleState _state = BattleState.Setup;
+	BattleUnit _activeUnit;
+	readonly List<BattleUnit> _units = new();
+	Vector2I _turnStartPos;
 
-	private Vector2I _turnStartPos;
-	private float _cameraAngle = -45f;
-	private float _cameraZoom = 8f;
+	// ─── CAMERA ───
+	float _camAngle = -45f;       // horizontal orbit (degrees)
+	float _camPitch = 45f;        // vertical pitch (degrees), adjustable
+	float _camZoom = 8f;
+	float _camAngleTarget = -45f;
+	float _camPitchTarget = 45f;
+	float _camZoomTarget = 8f;
+	const float CamRotSpeed = 120f; // degrees per second when holding Q/E
+	const float CamPitchSpeed = 60f;
+	const float CamSmoothSpeed = 8f;
+	const float CamPitchMin = 20f;
+	const float CamPitchMax = 75f;
+	const float CamZoomMin = 4f;
+	const float CamZoomMax = 16f;
+
+	// Track held keys for smooth rotation
+	bool _rotLeftHeld, _rotRightHeld, _pitchUpHeld, _pitchDownHeld;
+
+	// ─── OVERWORLD REFS ───
+	Control _overworldIdentityBar;
+	Control _overworldSidebar;
 
 	public override void _Ready()
 	{
 		SetupCamera();
+		CollapseOverworldUI();
 		StartTestBattle();
 	}
 
+	public override void _ExitTree()
+	{
+		RestoreOverworldUI();
+	}
+
 	// ═══════════════════════════════════════════════════════
-	//  SETUP
+	//  OVERWORLD UI MANAGEMENT
 	// ═══════════════════════════════════════════════════════
 
-	private void SetupCamera()
+	void CollapseOverworldUI()
+	{
+		// Find and collapse the overworld sidebar + identity bar
+		var hud = FindOverworldHUD();
+		if (hud == null) return;
+
+		// The identity bar is the first PanelContainer child
+		foreach (var child in hud.GetChildren())
+		{
+			if (child is PanelContainer pc && child.Name != "ChatPanel")
+			{
+				if (_overworldIdentityBar == null)
+				{
+					_overworldIdentityBar = pc;
+					pc.Visible = false;
+					continue;
+				}
+			}
+			if (child is VBoxContainer vb)
+			{
+				_overworldSidebar = vb;
+				vb.Visible = false;
+			}
+		}
+		GD.Print("[Battle] Collapsed overworld UI");
+	}
+
+	void RestoreOverworldUI()
+	{
+		if (_overworldIdentityBar != null) _overworldIdentityBar.Visible = true;
+		if (_overworldSidebar != null) _overworldSidebar.Visible = true;
+		GD.Print("[Battle] Restored overworld UI");
+	}
+
+	Control FindOverworldHUD()
+	{
+		// Walk up to find HUDLayer, then find OverworldHUD
+		var root = GetTree().Root;
+		return root.FindChild("OverworldHUD", true, false) as Control;
+	}
+
+	// ═══════════════════════════════════════════════════════
+	//  CAMERA
+	// ═══════════════════════════════════════════════════════
+
+	void SetupCamera()
 	{
 		_camera = new Camera3D();
 		_camera.Projection = Camera3D.ProjectionType.Orthogonal;
-		_camera.Size = _cameraZoom;
+		_camera.Size = _camZoom;
 		AddChild(_camera);
 	}
 
-	private void UpdateCamera()
+	void UpdateCamera(float dt)
 	{
 		if (_camera == null || _grid == null) return;
+
+		// Smooth interpolation
+		_camAngle = Mathf.Lerp(_camAngle, _camAngleTarget, dt * CamSmoothSpeed);
+		_camPitch = Mathf.Lerp(_camPitch, _camPitchTarget, dt * CamSmoothSpeed);
+		_camZoom = Mathf.Lerp(_camZoom, _camZoomTarget, dt * CamSmoothSpeed);
+
 		var center = IsoBattleRenderer.GridToWorld(_grid.Width / 2, _grid.Height / 2, 0);
-		float rad = Mathf.DegToRad(_cameraAngle);
-		float pitch = Mathf.DegToRad(45f);
-		float dist = _cameraZoom;
+		float rad = Mathf.DegToRad(_camAngle);
+		float pitch = Mathf.DegToRad(_camPitch);
+		float dist = _camZoom;
+
 		_camera.Position = center + new Vector3(
 			Mathf.Sin(rad) * Mathf.Cos(pitch) * dist,
 			Mathf.Sin(pitch) * dist,
 			Mathf.Cos(rad) * Mathf.Cos(pitch) * dist);
 		_camera.LookAt(center, Vector3.Up);
-		_camera.Size = _cameraZoom;
+		_camera.Size = _camZoom;
 	}
 
-	private void StartTestBattle()
+	public override void _Process(double delta)
+	{
+		float dt = (float)delta;
+
+		// Smooth rotation from held keys
+		if (_rotLeftHeld) _camAngleTarget -= CamRotSpeed * dt;
+		if (_rotRightHeld) _camAngleTarget += CamRotSpeed * dt;
+		if (_pitchUpHeld) _camPitchTarget = Mathf.Clamp(_camPitchTarget + CamPitchSpeed * dt, CamPitchMin, CamPitchMax);
+		if (_pitchDownHeld) _camPitchTarget = Mathf.Clamp(_camPitchTarget - CamPitchSpeed * dt, CamPitchMin, CamPitchMax);
+
+		UpdateCamera(dt);
+	}
+
+	// ═══════════════════════════════════════════════════════
+	//  BATTLE SETUP
+	// ═══════════════════════════════════════════════════════
+
+	void StartTestBattle()
 	{
 		_grid = BattleGrid.GenerateTestMap(1);
 		_turnQueue = new TurnQueue();
 
-		// Renderer
 		_renderer = new IsoBattleRenderer();
 		AddChild(_renderer);
 		_renderer.Initialize(_grid, _camera);
 		_renderer.TileClicked += OnTileClicked;
 		_renderer.TileHovered += OnTileHovered;
+		_renderer.TileRightClicked += OnTileRightClicked;
 
-		// HUD
 		_hud = new BattleHUD();
 		AddChild(_hud);
 		_hud.CommandSelected += OnHudCommand;
@@ -75,7 +173,6 @@ public partial class BattleManager : Node3D
 		_hud.SetAbilities(AbilityInfo.GetTestAbilities());
 		_hud.SetItems(ItemInfo.GetTestItems());
 
-		// Units
 		var unitA = BattleUnit.CreateDummy("Yumeno", UnitTeam.TeamA, new(1, 6), 5, 10);
 		var unitB = BattleUnit.CreateDummy("Enemy", UnitTeam.TeamB, new(6, 1), 5, 20);
 
@@ -87,7 +184,13 @@ public partial class BattleManager : Node3D
 			_renderer.PlaceUnit(u);
 		}
 
-		// Environment
+		// Lighting
+		var light = new DirectionalLight3D();
+		light.RotationDegrees = new Vector3(-45, -30, 0);
+		light.LightEnergy = 0.8f;
+		light.ShadowEnabled = true;
+		AddChild(light);
+
 		var env = new Godot.Environment();
 		env.BackgroundMode = Godot.Environment.BGMode.Color;
 		env.BackgroundColor = new Color("1a1a2e");
@@ -98,20 +201,15 @@ public partial class BattleManager : Node3D
 		we.Environment = env;
 		AddChild(we);
 
-		UpdateCamera();
-
 		_turnQueue.InitializeTurnOrder();
 		NextTurn();
-
-		foreach (var u in _units)
-			GD.Print($"[Battle] {u.Name}: BaseWt={u.BaseWt} MoveRT/tile={u.MoveRtPerTile}");
 	}
 
 	// ═══════════════════════════════════════════════════════
 	//  TURN FLOW
 	// ═══════════════════════════════════════════════════════
 
-	private void NextTurn()
+	void NextTurn()
 	{
 		_turnQueue.AdvanceTime();
 		_activeUnit = _turnQueue.GetActiveUnit();
@@ -128,12 +226,10 @@ public partial class BattleManager : Node3D
 		_activeUnit.HasActed = false;
 		_activeUnit.TilesMoved = 0;
 		_turnStartPos = _activeUnit.GridPosition;
-
 		ShowCommandMenu();
-		GD.Print($"[Battle] {_activeUnit.Name}'s turn (HP:{_activeUnit.CurrentHp}/{_activeUnit.MaxHp})");
 	}
 
-	private void ShowCommandMenu()
+	void ShowCommandMenu()
 	{
 		_state = BattleState.CommandMenu;
 		_hud.SetPhaseText($"⚔ {_activeUnit.Name.ToUpper()}'S TURN — SELECT ACTION");
@@ -142,7 +238,7 @@ public partial class BattleManager : Node3D
 		_renderer.ClearAllHighlights();
 	}
 
-	private void RefreshTurnOrder()
+	void RefreshTurnOrder()
 	{
 		var order = _turnQueue.GetTurnOrder(10);
 		var ordered = new List<BattleUnit>();
@@ -150,7 +246,7 @@ public partial class BattleManager : Node3D
 		_hud.UpdateTurnOrder(ordered, _activeUnit);
 	}
 
-	private void EndTurnWithAction(int actionRt)
+	void EndTurnWithAction(int actionRt)
 	{
 		_renderer.ClearAllHighlights();
 		_hud.HideCommandMenu();
@@ -159,10 +255,10 @@ public partial class BattleManager : Node3D
 	}
 
 	// ═══════════════════════════════════════════════════════
-	//  HUD COMMAND HANDLERS
+	//  HUD HANDLERS
 	// ═══════════════════════════════════════════════════════
 
-	private void OnHudCommand(string cmd)
+	void OnHudCommand(string cmd)
 	{
 		if (_activeUnit == null) return;
 
@@ -170,7 +266,7 @@ public partial class BattleManager : Node3D
 		{
 			case "Move":
 				_state = BattleState.MovePhase;
-				_hud.SetPhaseText($"⚔ {_activeUnit.Name.ToUpper()} — SELECT TILE TO MOVE");
+				_hud.SetPhaseText($"⚔ {_activeUnit.Name.ToUpper()} — SELECT TILE");
 				_hud.HideCommandMenu();
 				_renderer.ClearAllHighlights();
 				var moveRange = _grid.GetMovementRange(_activeUnit.GridPosition, _activeUnit.Move, _activeUnit.Jump);
@@ -192,8 +288,8 @@ public partial class BattleManager : Node3D
 				EndTurnWithAction(ActionRt.Defend);
 				break;
 
-			case "Wait":
-				GD.Print($"[Battle] {_activeUnit.Name} waits.");
+			case "End Turn":
+				GD.Print($"[Battle] {_activeUnit.Name} ends turn.");
 				EndTurnWithAction(ActionRt.Wait);
 				break;
 
@@ -204,43 +300,43 @@ public partial class BattleManager : Node3D
 		}
 	}
 
-	private void OnHudCancel()
+	void OnHudCancel()
 	{
-		if (_state == BattleState.MovePhase || _state == BattleState.TargetPhase)
-		{
-			// Return to command menu
+		if (_state is BattleState.MovePhase or BattleState.TargetPhase)
 			ShowCommandMenu();
-		}
 	}
 
-	private void OnAbilitySelected(int index)
+	void OnAbilitySelected(int index)
 	{
 		var abilities = AbilityInfo.GetTestAbilities();
 		if (index < 0 || index >= abilities.Count) return;
 		var ab = abilities[index];
-
 		_activeUnit.HasActed = true;
 		_activeUnit.CurrentEther = Mathf.Max(0, _activeUnit.CurrentEther - ab.EtherCost);
 		GD.Print($"[Battle] {_activeUnit.Name} uses {ab.Name}! (-{ab.EtherCost} EP)");
 		EndTurnWithAction(ab.RtCost);
 	}
 
-	private void OnItemSelected(int index)
+	void OnItemSelected(int index)
 	{
 		var items = ItemInfo.GetTestItems();
 		if (index < 0 || index >= items.Count) return;
-		var it = items[index];
-
 		_activeUnit.HasActed = true;
-		GD.Print($"[Battle] {_activeUnit.Name} uses {it.Name}!");
-		EndTurnWithAction(it.RtCost);
+		GD.Print($"[Battle] {_activeUnit.Name} uses {items[index].Name}!");
+		EndTurnWithAction(items[index].RtCost);
+	}
+
+	void OnTileRightClicked(int x, int y)
+	{
+		var tile = _grid.At(x, y);
+		if (tile?.Occupant != null) _hud.InspectUnit(tile.Occupant);
 	}
 
 	// ═══════════════════════════════════════════════════════
 	//  TILE INTERACTION
 	// ═══════════════════════════════════════════════════════
 
-	private void OnTileClicked(int x, int y)
+	void OnTileClicked(int x, int y)
 	{
 		var pos = new Vector2I(x, y);
 		var tile = _grid.At(pos);
@@ -248,12 +344,7 @@ public partial class BattleManager : Node3D
 
 		if (_state == BattleState.MovePhase)
 		{
-			// Click on self = cancel move
-			if (pos == _activeUnit.GridPosition)
-			{
-				ShowCommandMenu();
-				return;
-			}
+			if (pos == _activeUnit.GridPosition) { ShowCommandMenu(); return; }
 
 			var moveRange = _grid.GetMovementRange(_activeUnit.GridPosition, _activeUnit.Move, _activeUnit.Jump);
 			foreach (var t in moveRange)
@@ -261,18 +352,14 @@ public partial class BattleManager : Node3D
 				if (t.GridPos == pos && tile.Occupant == null)
 				{
 					var path = _grid.FindPath(_activeUnit.GridPosition, pos, _activeUnit.Jump);
-					int tilesMoved = path?.Count ?? 0;
-
+					int moved = path?.Count ?? 0;
 					_grid.At(_activeUnit.GridPosition).Occupant = null;
 					_activeUnit.GridPosition = pos;
 					tile.Occupant = _activeUnit;
 					_activeUnit.HasMoved = true;
-					_activeUnit.TilesMoved = tilesMoved;
+					_activeUnit.TilesMoved = moved;
 					_renderer.MoveUnitVisual(_activeUnit);
-
-					GD.Print($"[Battle] {_activeUnit.Name} moved {tilesMoved} tiles.");
-
-					// Return to command menu after moving
+					GD.Print($"[Battle] {_activeUnit.Name} moved {moved} tiles.");
 					ShowCommandMenu();
 					return;
 				}
@@ -280,14 +367,8 @@ public partial class BattleManager : Node3D
 		}
 		else if (_state == BattleState.TargetPhase)
 		{
-			// Click self = cancel
-			if (pos == _activeUnit.GridPosition)
-			{
-				ShowCommandMenu();
-				return;
-			}
+			if (pos == _activeUnit.GridPosition) { ShowCommandMenu(); return; }
 
-			// Click enemy in range = attack
 			if (tile.Occupant != null && tile.Occupant.Team != _activeUnit.Team)
 			{
 				var atkRange = _grid.GetAttackRange(_activeUnit.GridPosition, 1, 1);
@@ -305,12 +386,10 @@ public partial class BattleManager : Node3D
 		}
 	}
 
-	private void OnTileHovered(int x, int y)
+	void OnTileHovered(int x, int y)
 	{
 		var tile = _grid.At(x, y);
 		_hud.ShowTileInfo(tile);
-
-		// Show target info when hovering an enemy
 		if (tile?.Occupant != null && tile.Occupant != _activeUnit)
 			_hud.UpdateTargetInfo(tile.Occupant);
 		else
@@ -321,7 +400,7 @@ public partial class BattleManager : Node3D
 	//  COMBAT
 	// ═══════════════════════════════════════════════════════
 
-	private void DoAttack(BattleUnit atk, BattleUnit def)
+	void DoAttack(BattleUnit atk, BattleUnit def)
 	{
 		float raw = atk.Atk * 1.5f;
 		int dmg = (int)Mathf.Max(raw - def.Def * 0.8f, 1);
@@ -329,11 +408,7 @@ public partial class BattleManager : Node3D
 
 		float dodge = Mathf.Clamp((def.Avd * 0.4f + def.Agility * 0.2f - atk.Acc * 0.3f) / 100f, 0f, 0.75f);
 		var rng = new System.Random();
-		if (rng.NextDouble() < dodge)
-		{
-			GD.Print($"[Battle] {def.Name} dodged!");
-			return;
-		}
+		if (rng.NextDouble() < dodge) { GD.Print($"[Battle] {def.Name} dodged!"); return; }
 
 		bool crit = rng.NextDouble() * 100 < atk.CritPercent;
 		if (crit) dmg = (int)(dmg * 1.5f);
@@ -344,7 +419,7 @@ public partial class BattleManager : Node3D
 	}
 
 	// ═══════════════════════════════════════════════════════
-	//  CAMERA INPUT
+	//  INPUT — camera rotation + zoom
 	// ═══════════════════════════════════════════════════════
 
 	public override void _UnhandledInput(InputEvent ev)
@@ -352,16 +427,24 @@ public partial class BattleManager : Node3D
 		if (ev is InputEventMouseButton mb)
 		{
 			if (mb.ButtonIndex == MouseButton.WheelUp)
-			{ _cameraZoom = Mathf.Max(4f, _cameraZoom - 0.5f); UpdateCamera(); }
+				_camZoomTarget = Mathf.Max(CamZoomMin, _camZoomTarget - 0.5f);
 			else if (mb.ButtonIndex == MouseButton.WheelDown)
-			{ _cameraZoom = Mathf.Min(16f, _cameraZoom + 0.5f); UpdateCamera(); }
+				_camZoomTarget = Mathf.Min(CamZoomMax, _camZoomTarget + 0.5f);
 		}
-		else if (ev is InputEventKey key && key.Pressed)
+		else if (ev is InputEventKey key)
 		{
-			if (key.Keycode == Key.Q) { _cameraAngle -= 15; UpdateCamera(); }
-			if (key.Keycode == Key.E) { _cameraAngle += 15; UpdateCamera(); }
-			if (key.Keycode == Key.Escape && _state == BattleState.BattleOver)
-				GetTree().ChangeSceneToFile("res://Scenes/World/Overworld.tscn");
+			// Track held state for smooth rotation
+			if (key.Keycode == Key.Q) _rotLeftHeld = key.Pressed;
+			if (key.Keycode == Key.E) _rotRightHeld = key.Pressed;
+			if (key.Keycode == Key.R) _pitchUpHeld = key.Pressed;
+			if (key.Keycode == Key.F) _pitchDownHeld = key.Pressed;
+
+			// Battle exit (debug)
+			if (key.Pressed && key.Keycode == Key.F5)
+			{
+				QueueFree(); // Remove battle overlay, return to overworld
+				GetViewport().SetInputAsHandled();
+			}
 		}
 	}
 }

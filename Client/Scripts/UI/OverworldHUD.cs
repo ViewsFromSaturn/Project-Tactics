@@ -100,16 +100,22 @@ public partial class OverworldHUD : Control
 		if (ev is not InputEventKey key || !key.Pressed || key.Echo) return;
 		if (ChatPanel.IsUiFocused || IsAnyTextFieldFocused) return;
 
-		// F5: Enter test battle (debug)
+		// F5: Enter test battle (overlay on top of overworld)
 		if (key.Keycode == Key.F5)
 		{
-			GD.Print("[HUD] Entering test battle...");
+			// Check if battle already running
+			var existing = GetTree().Root.FindChild("Battle", true, false);
+			if (existing != null)
+			{
+				GD.Print("[HUD] Battle already running, removing...");
+				existing.QueueFree();
+				return;
+			}
+
+			GD.Print("[HUD] Starting test battle overlay...");
 			var battleScene = new Combat.BattleManager();
-			GetTree().Root.AddChild(battleScene);
-			// Hide overworld
-			var overworld = GetTree().Root.FindChild("Overworld", true, false);
-			if (overworld is Node3D ow3d) ow3d.Visible = false;
-			else if (overworld is CanvasItem owCi) owCi.Visible = false;
+			battleScene.Name = "Battle";
+			GetTree().CurrentScene.AddChild(battleScene);
 			GetViewport().SetInputAsHandled();
 			return;
 		}
