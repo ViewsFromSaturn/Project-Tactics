@@ -19,7 +19,7 @@ public partial class ApiClient : Node
 	public static ApiClient Instance { get; private set; }
 
 	// ─── CONFIGURATION ──────────────────────────────────────
-	private const string BaseUrl = "http://localhost:5000/api";
+	private const string BaseUrl = "http://127.0.0.1:5000/api";
 
 	// ─── AUTH STATE ─────────────────────────────────────────
 	public string AuthToken { get; private set; } = "";
@@ -55,6 +55,7 @@ public partial class ApiClient : Node
 	private HttpRequest CreateRequest()
 	{
 		var req = new HttpRequest();
+		req.Timeout = 5.0; // 5 second timeout instead of infinite
 		AddChild(req);
 		return req;
 	}
