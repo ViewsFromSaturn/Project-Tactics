@@ -100,6 +100,20 @@ public partial class OverworldHUD : Control
 		if (ev is not InputEventKey key || !key.Pressed || key.Echo) return;
 		if (ChatPanel.IsUiFocused || IsAnyTextFieldFocused) return;
 
+		// F5: Enter test battle (debug)
+		if (key.Keycode == Key.F5)
+		{
+			GD.Print("[HUD] Entering test battle...");
+			var battleScene = new Combat.BattleManager();
+			GetTree().Root.AddChild(battleScene);
+			// Hide overworld
+			var overworld = GetTree().Root.FindChild("Overworld", true, false);
+			if (overworld is Node3D ow3d) ow3d.Visible = false;
+			else if (overworld is CanvasItem owCi) owCi.Visible = false;
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
 		if (key.Keycode == Key.Escape)
 		{
 			if (_openWindows.Count > 0) CloseAllWindows();
