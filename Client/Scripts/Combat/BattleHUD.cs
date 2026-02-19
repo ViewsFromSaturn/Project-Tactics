@@ -795,11 +795,22 @@ public partial class BattleHUD : CanvasLayer
 	void BuildCrownButton()
 	{
 		_crownBtn = new Button();
-		_crownBtn.Text = "👑";
 		_crownBtn.TooltipText = "Main Menu";
 		_crownBtn.CustomMinimumSize = new Vector2(40, 40);
 		_crownBtn.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
 		_crownBtn.Position = new Vector2(16, 12);
+
+		// Use the gold crown icon
+		var crownIcon = new TextureRect();
+		crownIcon.CustomMinimumSize = new Vector2(24, 24);
+		crownIcon.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
+		crownIcon.SetAnchorsPreset(Control.LayoutPreset.Center);
+		crownIcon.MouseFilter = Control.MouseFilterEnum.Ignore;
+		if (ResourceLoader.Exists("res://Assets/Icons/icon_gold_crown.png"))
+			crownIcon.Texture = GD.Load<Texture2D>("res://Assets/Icons/icon_gold_crown.png");
+		else if (ResourceLoader.Exists("res://Assets/Icons/icon_crown.png"))
+			crownIcon.Texture = GD.Load<Texture2D>("res://Assets/Icons/icon_crown.png");
+		_crownBtn.AddChild(crownIcon);
 
 		var normal = new StyleBoxFlat();
 		normal.BgColor = BgPanel;
