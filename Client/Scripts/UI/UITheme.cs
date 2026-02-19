@@ -450,7 +450,7 @@ public static class UITheme
 		btn.CustomMinimumSize = new Vector2(32, 32);
 		btn.AddThemeFontSizeOverride("font_size", 16);
 		btn.AddThemeColorOverride("font_color", TextDim);
-		btn.AddThemeColorOverride("font_hover_color", AccentRuby);
+		btn.AddThemeColorOverride("font_hover_color", Text);
 
 		var normal = new StyleBoxFlat();
 		normal.BgColor = Colors.Transparent;
@@ -458,13 +458,12 @@ public static class UITheme
 		normal.SetContentMarginAll(4);
 		btn.AddThemeStyleboxOverride("normal", normal);
 
-		// WPF: hover = #33C85050 bg, #C85050 text
 		var hover = (StyleBoxFlat)normal.Duplicate();
-		hover.BgColor = AccentRubyDim;
+		hover.BgColor = IsDarkMode ? new Color(1f, 1f, 1f, 0.08f) : new Color(0f, 0f, 0f, 0.06f);
 		btn.AddThemeStyleboxOverride("hover", hover);
 
 		var press = (StyleBoxFlat)normal.Duplicate();
-		press.BgColor = AccentRuby;
+		press.BgColor = IsDarkMode ? new Color(1f, 1f, 1f, 0.15f) : new Color(0f, 0f, 0f, 0.1f);
 		btn.AddThemeStyleboxOverride("pressed", press);
 
 		return btn;

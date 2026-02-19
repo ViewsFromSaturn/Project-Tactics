@@ -21,6 +21,9 @@ public partial class BattleManager : Node3D
 	BattleUnit _activeUnit;
 	readonly List<BattleUnit> _units = new();
 	Vector2I _turnStartPos;
+	Vector2I _pendingMoveTile = new(-1, -1);
+	List<Vector2I> _pendingMovePath;
+	ProjectTactics.UI.ChatPanel _chatPanel;
 
 	// ─── CAMERA ───
 	float _camAngle = -45f;       // horizontal orbit (degrees)
@@ -43,12 +46,26 @@ public partial class BattleManager : Node3D
 	// ─── OVERWORLD REFS ───
 	Control _overworldIdentityBar;
 	Control _overworldSidebar;
+	readonly List<Node> _hiddenOverworldNodes = new();
 
 	public override void _Ready()
 	{
 		SetupCamera();
 		CollapseOverworldUI();
+		_chatPanel = FindChatPanel(GetTree().CurrentScene);
+		if (_chatPanel == null) GD.PrintErr("[Battle] ChatPanel not found — combat log will only print to console.");
 		StartTestBattle();
+	}
+
+	static ProjectTactics.UI.ChatPanel FindChatPanel(Node root)
+	{
+		if (root is ProjectTactics.UI.ChatPanel cp) return cp;
+		foreach (var child in root.GetChildren())
+		{
+			var found = FindChatPanel(child);
+			if (found != null) return found;
+		}
+		return null;
 	}
 
 	public override void _ExitTree()
@@ -62,43 +79,70 @@ public partial class BattleManager : Node3D
 
 	void CollapseOverworldUI()
 	{
-		// Find and collapse the overworld sidebar + identity bar
-		var hud = FindOverworldHUD();
-		if (hud == null) return;
+		var scene = GetTree().CurrentScene;
+		if (scene == null) return;
 
-		// The identity bar is the first PanelContainer child
-		foreach (var child in hud.GetChildren())
+		// Hide all 2D world elements (tilemap, player, 2D camera)
+		foreach (var child in scene.GetChildren())
 		{
-			if (child is PanelContainer pc && child.Name != "ChatPanel")
+			// Skip CanvasLayers (HUDLayer, DebugLayer) — we want those to stay
+			if (child is CanvasLayer) continue;
+			// Skip ourselves
+			if (child == this) continue;
+
+			if (child is Node2D n2d)
 			{
-				if (_overworldIdentityBar == null)
-				{
-					_overworldIdentityBar = pc;
-					pc.Visible = false;
-					continue;
-				}
+				if (n2d.Visible) { n2d.Visible = false; _hiddenOverworldNodes.Add(n2d); }
 			}
-			if (child is VBoxContainer vb)
+			else if (child is TileMapLayer tml)
 			{
-				_overworldSidebar = vb;
-				vb.Visible = false;
+				if (tml.Visible) { tml.Visible = false; _hiddenOverworldNodes.Add(tml); }
 			}
 		}
-		GD.Print("[Battle] Collapsed overworld UI");
+
+		// Disable the 2D camera so it doesn't interfere
+		var cam2d = scene.FindChild("Camera", true, false) as Camera2D;
+		if (cam2d != null) { cam2d.Enabled = false; _hiddenOverworldNodes.Add(cam2d); }
+
+		// Find and collapse the overworld sidebar + identity bar
+		var hud = scene.FindChild("OverworldHUD", true, false) as Control;
+		if (hud != null)
+		{
+			foreach (var child in hud.GetChildren())
+			{
+				if (child is PanelContainer pc)
+				{
+					if (_overworldIdentityBar == null)
+					{
+						_overworldIdentityBar = pc;
+						pc.Visible = false;
+					}
+				}
+				else if (child is VBoxContainer vb)
+				{
+					_overworldSidebar = vb;
+					vb.Visible = false;
+				}
+			}
+		}
+
+		GD.Print("[Battle] Collapsed overworld UI, hid 2D elements");
 	}
 
 	void RestoreOverworldUI()
 	{
+		// Restore hidden 2D nodes
+		foreach (var node in _hiddenOverworldNodes)
+		{
+			if (node is Node2D n2d) n2d.Visible = true;
+			else if (node is TileMapLayer tml) tml.Visible = true;
+			else if (node is Camera2D cam) cam.Enabled = true;
+		}
+		_hiddenOverworldNodes.Clear();
+
 		if (_overworldIdentityBar != null) _overworldIdentityBar.Visible = true;
 		if (_overworldSidebar != null) _overworldSidebar.Visible = true;
 		GD.Print("[Battle] Restored overworld UI");
-	}
-
-	Control FindOverworldHUD()
-	{
-		// Walk up to find HUDLayer, then find OverworldHUD
-		var root = GetTree().Root;
-		return root.FindChild("OverworldHUD", true, false) as Control;
 	}
 
 	// ═══════════════════════════════════════════════════════
@@ -170,6 +214,7 @@ public partial class BattleManager : Node3D
 		_hud.CommandCancelled += OnHudCancel;
 		_hud.AbilitySelected += OnAbilitySelected;
 		_hud.ItemSelected += OnItemSelected;
+		_hud.MoveConfirmed += OnMoveConfirmed;
 		_hud.SetAbilities(AbilityInfo.GetTestAbilities());
 		_hud.SetItems(ItemInfo.GetTestItems());
 
@@ -232,6 +277,8 @@ public partial class BattleManager : Node3D
 	void ShowCommandMenu()
 	{
 		_state = BattleState.CommandMenu;
+		_pendingMoveTile = new(-1, -1);
+		_pendingMovePath = null;
 		_hud.SetPhaseText($"⚔ {_activeUnit.Name.ToUpper()}'S TURN — SELECT ACTION");
 		_hud.ShowCommandMenu(_activeUnit);
 		RefreshTurnOrder();
@@ -284,17 +331,17 @@ public partial class BattleManager : Node3D
 
 			case "Defend":
 				_activeUnit.HasActed = true;
-				GD.Print($"[Battle] {_activeUnit.Name} defends.");
+				CombatLog($"🛡 {_activeUnit.Name} defends. (DEF +50% until next turn)");
 				EndTurnWithAction(ActionRt.Defend);
 				break;
 
 			case "End Turn":
-				GD.Print($"[Battle] {_activeUnit.Name} ends turn.");
+				CombatLog($"◎ {_activeUnit.Name} ends turn.");
 				EndTurnWithAction(ActionRt.Wait);
 				break;
 
 			case "Flee":
-				GD.Print($"[Battle] {_activeUnit.Name} flees! (not implemented)");
+				CombatLog($"↺ {_activeUnit.Name} attempts to flee!");
 				EndTurnWithAction(ActionRt.Wait);
 				break;
 		}
@@ -302,8 +349,51 @@ public partial class BattleManager : Node3D
 
 	void OnHudCancel()
 	{
+		if (_state == BattleState.MovePhase && _pendingMoveTile != new Vector2I(-1, -1))
+		{
+			CancelMovePreview();
+			return;
+		}
 		if (_state is BattleState.MovePhase or BattleState.TargetPhase)
 			ShowCommandMenu();
+	}
+
+	void OnMoveConfirmed()
+	{
+		if (_state == BattleState.MovePhase && _pendingMoveTile != new Vector2I(-1, -1))
+			ConfirmMove();
+	}
+
+	void ConfirmMove()
+	{
+		if (_activeUnit == null || _pendingMoveTile == new Vector2I(-1, -1)) return;
+
+		var targetTile = _grid.At(_pendingMoveTile);
+		if (targetTile == null) return;
+
+		int moved = _pendingMovePath?.Count ?? 0;
+		_grid.At(_activeUnit.GridPosition).Occupant = null;
+		_activeUnit.GridPosition = _pendingMoveTile;
+		targetTile.Occupant = _activeUnit;
+		_activeUnit.HasMoved = true;
+		_activeUnit.TilesMoved = moved;
+		_renderer.MoveUnitVisual(_activeUnit);
+		CombatLog($"→ {_activeUnit.Name} moves to ({_pendingMoveTile.X},{_pendingMoveTile.Y}) [{moved} tiles]");
+
+		_pendingMoveTile = new(-1, -1);
+		_pendingMovePath = null;
+		_renderer.ClearMovePreview();
+		_hud.HideMoveConfirm();
+		ShowCommandMenu();
+	}
+
+	void CancelMovePreview()
+	{
+		_pendingMoveTile = new(-1, -1);
+		_pendingMovePath = null;
+		_renderer.ClearMovePreview();
+		_hud.HideMoveConfirm();
+		_hud.SetPhaseText($"⚔ {_activeUnit.Name.ToUpper()} — SELECT TILE");
 	}
 
 	void OnAbilitySelected(int index)
@@ -313,7 +403,7 @@ public partial class BattleManager : Node3D
 		var ab = abilities[index];
 		_activeUnit.HasActed = true;
 		_activeUnit.CurrentEther = Mathf.Max(0, _activeUnit.CurrentEther - ab.EtherCost);
-		GD.Print($"[Battle] {_activeUnit.Name} uses {ab.Name}! (-{ab.EtherCost} EP)");
+		CombatLog($"✦ {_activeUnit.Name} uses {ab.Name}! (-{ab.EtherCost} EP)");
 		EndTurnWithAction(ab.RtCost);
 	}
 
@@ -322,7 +412,7 @@ public partial class BattleManager : Node3D
 		var items = ItemInfo.GetTestItems();
 		if (index < 0 || index >= items.Count) return;
 		_activeUnit.HasActed = true;
-		GD.Print($"[Battle] {_activeUnit.Name} uses {items[index].Name}!");
+		CombatLog($"◆ {_activeUnit.Name} uses {items[index].Name}!");
 		EndTurnWithAction(items[index].RtCost);
 	}
 
@@ -344,26 +434,33 @@ public partial class BattleManager : Node3D
 
 		if (_state == BattleState.MovePhase)
 		{
-			if (pos == _activeUnit.GridPosition) { ShowCommandMenu(); return; }
+			if (pos == _activeUnit.GridPosition) { CancelMovePreview(); ShowCommandMenu(); return; }
 
 			var moveRange = _grid.GetMovementRange(_activeUnit.GridPosition, _activeUnit.Move, _activeUnit.Jump);
+
+			// Tile must be unoccupied — one unit per tile
+			if (tile.Occupant != null) return;
+
+			// Check if clicked tile is in move range
+			bool validTarget = false;
 			foreach (var t in moveRange)
 			{
-				if (t.GridPos == pos && tile.Occupant == null)
-				{
-					var path = _grid.FindPath(_activeUnit.GridPosition, pos, _activeUnit.Jump);
-					int moved = path?.Count ?? 0;
-					_grid.At(_activeUnit.GridPosition).Occupant = null;
-					_activeUnit.GridPosition = pos;
-					tile.Occupant = _activeUnit;
-					_activeUnit.HasMoved = true;
-					_activeUnit.TilesMoved = moved;
-					_renderer.MoveUnitVisual(_activeUnit);
-					GD.Print($"[Battle] {_activeUnit.Name} moved {moved} tiles.");
-					ShowCommandMenu();
-					return;
-				}
+				if (t.GridPos == pos) { validTarget = true; break; }
 			}
+			if (!validTarget) return;
+
+			// Single click → show preview + confirm button
+			_renderer.ClearMovePreview();
+			var path = _grid.FindPath(_activeUnit.GridPosition, pos, _activeUnit.Jump);
+			_pendingMoveTile = pos;
+			_pendingMovePath = path;
+
+			// Show purple path preview
+			_renderer.ShowMovePreview(pos, path ?? new List<Vector2I>());
+
+			// Show confirm/cancel buttons
+			_hud.ShowMoveConfirm(pos.X, pos.Y);
+			_hud.SetPhaseText($"⚔ {_activeUnit.Name.ToUpper()} — MOVE TO ({pos.X},{pos.Y})? CONFIRM OR CANCEL");
 		}
 		else if (_state == BattleState.TargetPhase)
 		{
@@ -400,6 +497,12 @@ public partial class BattleManager : Node3D
 	//  COMBAT
 	// ═══════════════════════════════════════════════════════
 
+	void CombatLog(string text)
+	{
+		GD.Print($"[Battle] {text}");
+		_chatPanel?.AddCombatMessage(text);
+	}
+
 	void DoAttack(BattleUnit atk, BattleUnit def)
 	{
 		float raw = atk.Atk * 1.5f;
@@ -408,14 +511,21 @@ public partial class BattleManager : Node3D
 
 		float dodge = Mathf.Clamp((def.Avd * 0.4f + def.Agility * 0.2f - atk.Acc * 0.3f) / 100f, 0f, 0.75f);
 		var rng = new System.Random();
-		if (rng.NextDouble() < dodge) { GD.Print($"[Battle] {def.Name} dodged!"); return; }
+		if (rng.NextDouble() < dodge)
+		{
+			CombatLog($"↺ {def.Name} dodged {atk.Name}'s attack!");
+			return;
+		}
 
 		bool crit = rng.NextDouble() * 100 < atk.CritPercent;
 		if (crit) dmg = (int)(dmg * 1.5f);
 		def.CurrentHp = Mathf.Max(0, def.CurrentHp - dmg);
 
-		GD.Print($"[Battle] {atk.Name} → {def.Name}: {dmg} dmg{(crit ? " CRIT!" : "")} ({def.CurrentHp}/{def.MaxHp})");
-		if (!def.IsAlive) GD.Print($"[Battle] {def.Name} defeated!");
+		string critTag = crit ? " CRIT!" : "";
+		CombatLog($"⚔ {atk.Name} attacks {def.Name} with Basic Strike →{critTag} {dmg} dmg ({def.CurrentHp}/{def.MaxHp} HP)");
+
+		if (!def.IsAlive)
+			CombatLog($"💀 {def.Name} has been defeated!");
 	}
 
 	// ═══════════════════════════════════════════════════════

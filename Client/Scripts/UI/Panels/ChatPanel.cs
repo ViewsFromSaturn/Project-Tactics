@@ -20,7 +20,7 @@ public partial class ChatPanel : Control
 	public static bool FadeWhenIdle { get; set; } = false;
 
 	// ═══ MESSAGE TYPES ═══
-	public enum MsgType { Say, Whisper, Yell, Emote, Ooc, Faction, Story, System }
+	public enum MsgType { Say, Whisper, Yell, Emote, Ooc, Faction, Story, System, Combat }
 
 	public record ChatMessage(string Sender, string Text, MsgType Type, string Time, Color SenderColor);
 
@@ -33,6 +33,7 @@ public partial class ChatPanel : Control
 	static Color SystemColor  => new Color("C8B060");
 	static Color FactionColor => new Color("E09040");
 	static Color StoryColor   => new Color("B07AE0");
+	static Color CombatColor  => new Color("E06060");
 	static Color SpeechWhite  => UITheme.IsDarkMode ? new Color("EEEEE8") : new Color("1A1A2E");
 
 	// ═══ STATE ═══
@@ -67,6 +68,11 @@ public partial class ChatPanel : Control
 	Label _newMsgIndicator;
 	readonly Dictionary<string, Button> _tabButtons = new();
 	readonly Dictionary<string, ColorRect> _tabUnreadDots = new();
+
+	// StyleBox refs for live theme switching
+	StyleBoxFlat _inputNormal, _inputFocus;
+	StyleBoxFlat _verbNormal, _verbHover;
+	StyleBoxFlat _emoteNormal, _emoteHover;
 
 	// Emote panel refs
 	Panel _emotePanel;
@@ -148,8 +154,23 @@ public partial class ChatPanel : Control
 		_playerIcColor = SayColor;
 		_verbBtn?.AddThemeColorOverride("font_color", GetVerbColor(GetVerbs()[_currentVerb]));
 		_chatInput?.AddThemeColorOverride("font_color", UITheme.TextBright);
+		_chatInput?.AddThemeColorOverride("font_uneditable_color", UITheme.TextBright);
 		_chatInput?.AddThemeColorOverride("font_placeholder_color", UITheme.TextDim);
+		_chatInput?.AddThemeColorOverride("caret_color", UITheme.Accent);
+		_chatInput?.AddThemeColorOverride("selection_color", new Color(UITheme.Accent, 0.3f));
 		_messageLog?.AddThemeColorOverride("default_color", SayColor);
+
+		// Repaint input bar backgrounds
+		if (_inputNormal != null) { _inputNormal.BgColor = UITheme.BgInput; }
+		if (_inputFocus  != null) { _inputFocus.BgColor = UITheme.BgWhite; _inputFocus.BorderColor = UITheme.BorderFocus; }
+		if (_verbNormal  != null) { _verbNormal.BgColor = UITheme.BgInput; _verbNormal.BorderColor = UITheme.BorderSubtle; }
+		if (_verbHover   != null) { _verbHover.BgColor = UITheme.BgPanelHover; }
+		if (_emoteNormal != null) { _emoteNormal.BgColor = UITheme.BgInput; _emoteNormal.BorderColor = UITheme.BorderSubtle; }
+		if (_emoteHover  != null) { _emoteHover.BgColor = UITheme.BgPanelHover; }
+
+		// Emote button text colors
+		_emoteExpandBtn?.AddThemeColorOverride("font_color", UITheme.TextDim);
+		_emoteExpandBtn?.AddThemeColorOverride("font_hover_color", UITheme.Text);
 
 		// Update tab colors
 		if (_currentTab != null) SetActiveTab(_currentTab);
@@ -417,6 +438,7 @@ public partial class ChatPanel : Control
 		AddTab("all", "All");
 		AddTab("ic", "IC");
 		AddTab("ooc", "OOC");
+		AddTab("cbt", "Cbt");
 		AddTab("fac", "Fac");
 		AddTab("sys", "Sys");
 
@@ -596,9 +618,11 @@ public partial class ChatPanel : Control
 		verbStyle.ContentMarginTop = 6; verbStyle.ContentMarginBottom = 6;
 		verbStyle.BorderWidthRight = 1;
 		verbStyle.BorderColor = UITheme.BorderSubtle;
+		_verbNormal = verbStyle;
 		_verbBtn.AddThemeStyleboxOverride("normal", verbStyle);
 		var verbHover = (StyleBoxFlat)verbStyle.Duplicate();
 		verbHover.BgColor = UITheme.BgPanelHover;
+		_verbHover = verbHover;
 		_verbBtn.AddThemeStyleboxOverride("hover", verbHover);
 		_verbBtn.AddThemeStyleboxOverride("pressed", verbStyle);
 		_verbBtn.Pressed += CycleVerb;
@@ -610,8 +634,10 @@ public partial class ChatPanel : Control
 		_chatInput.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 		_chatInput.AddThemeFontSizeOverride("font_size", _chatFontSize);
 		_chatInput.AddThemeColorOverride("font_color", UITheme.TextBright);
+		_chatInput.AddThemeColorOverride("font_uneditable_color", UITheme.TextBright);
 		_chatInput.AddThemeColorOverride("font_placeholder_color", UITheme.TextDim);
 		_chatInput.AddThemeColorOverride("caret_color", UITheme.Accent);
+		_chatInput.AddThemeColorOverride("selection_color", new Color(UITheme.Accent, 0.3f));
 		if (UITheme.FontBody != null) _chatInput.AddThemeFontOverride("font", UITheme.FontBody);
 
 		var inputStyle = new StyleBoxFlat();
@@ -619,11 +645,13 @@ public partial class ChatPanel : Control
 		inputStyle.ContentMarginLeft = 10; inputStyle.ContentMarginRight = 10;
 		inputStyle.ContentMarginTop = 6; inputStyle.ContentMarginBottom = 6;
 		inputStyle.BorderColor = Colors.Transparent; inputStyle.SetBorderWidthAll(1);
+		_inputNormal = inputStyle;
 		_chatInput.AddThemeStyleboxOverride("normal", inputStyle);
 
 		var inputFocus = (StyleBoxFlat)inputStyle.Duplicate();
 		inputFocus.BgColor = UITheme.BgWhite;
 		inputFocus.BorderColor = UITheme.BorderFocus;  // Violet
+		_inputFocus = inputFocus;
 		_chatInput.AddThemeStyleboxOverride("focus", inputFocus);
 
 		_chatInput.TextSubmitted += OnTextSubmitted;
@@ -658,9 +686,11 @@ public partial class ChatPanel : Control
 		emoteStyle.ContentMarginTop = 6; emoteStyle.ContentMarginBottom = 6;
 		emoteStyle.BorderWidthLeft = 1;
 		emoteStyle.BorderColor = UITheme.BorderSubtle;
+		_emoteNormal = emoteStyle;
 		_emoteExpandBtn.AddThemeStyleboxOverride("normal", emoteStyle);
 		var emoteHover = (StyleBoxFlat)emoteStyle.Duplicate();
 		emoteHover.BgColor = UITheme.BgPanelHover;
+		_emoteHover = emoteHover;
 		_emoteExpandBtn.AddThemeStyleboxOverride("hover", emoteHover);
 		_emoteExpandBtn.AddThemeStyleboxOverride("pressed", emoteStyle);
 
@@ -1149,6 +1179,7 @@ public partial class ChatPanel : Control
 				MsgType.Whisper => $"[Whisper] {m.Sender}:",
 				MsgType.Yell => $"[Yell] {m.Sender}:",
 				MsgType.Story => "[Story]",
+				MsgType.Combat => "[Combat]",
 				_ => $"{m.Sender}:"
 			};
 			return $"[{m.Time}] {prefix} {m.Text}";
@@ -1242,9 +1273,18 @@ public partial class ChatPanel : Control
 		// Faction unread dot
 		if (type == MsgType.Faction && _currentTab != "fac")
 			if (_tabUnreadDots.ContainsKey("fac")) _tabUnreadDots["fac"].Visible = true;
+		// Combat unread dot
+		if (type == MsgType.Combat && _currentTab != "cbt")
+			if (_tabUnreadDots.ContainsKey("cbt")) _tabUnreadDots["cbt"].Visible = true;
 
 		if (PassesFilter(type))
 			AppendFormatted(msg);
+	}
+
+	/// <summary>Post a combat log message. Called by BattleManager.</summary>
+	public void AddCombatMessage(string text)
+	{
+		AddMessage("", text, MsgType.Combat);
 	}
 
 	private bool PassesFilter(MsgType type) => _currentTab switch
@@ -1252,6 +1292,7 @@ public partial class ChatPanel : Control
 		"all" => true,
 		"ic" => type is MsgType.Say or MsgType.Whisper or MsgType.Yell or MsgType.Emote or MsgType.Story,
 		"ooc" => type == MsgType.Ooc,
+		"cbt" => type == MsgType.Combat,
 		"fac" => type == MsgType.Faction,
 		"sys" => type == MsgType.System,
 		_ => true
@@ -1296,6 +1337,7 @@ public partial class ChatPanel : Control
 			MsgType.Faction => $"{t}[color=#{FactionColor.ToHtml(false)}]📢 [font_size=10][Faction][/font_size] [url={s}][b]{s}[/b][/url]: {Esc(msg.Text)}[/color]",
 			MsgType.Story => $"{t}[color=#{StoryColor.ToHtml(false)}]📖 [font_size=10][Story][/font_size] [i]{emoteText}[/i][/color]",
 			MsgType.System => $"{t}[color=#{SystemColor.ToHtml(false)}]{Esc(msg.Text)}[/color]",
+			MsgType.Combat => $"{t}[color=#{CombatColor.ToHtml(false)}]{Esc(msg.Text)}[/color]",
 			_ => $"{t}{Esc(msg.Text)}"
 		};
 

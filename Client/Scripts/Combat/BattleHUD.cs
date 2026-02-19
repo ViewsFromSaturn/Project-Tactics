@@ -23,6 +23,7 @@ public partial class BattleHUD : CanvasLayer
 	[Signal] public delegate void CommandCancelledEventHandler();
 	[Signal] public delegate void AbilitySelectedEventHandler(int index);
 	[Signal] public delegate void ItemSelectedEventHandler(int index);
+	[Signal] public delegate void MoveConfirmedEventHandler();
 
 	// Chat area reserve — all battle UI sits above this
 	const float ChatHeight = 200f;
@@ -56,6 +57,14 @@ public partial class BattleHUD : CanvasLayer
 	PanelContainer _abilityPanel, _itemPanel, _tooltipPanel;
 	VBoxContainer _abilityList, _itemList;
 	readonly List<Button> _abilityBtns = new(), _itemBtns = new();
+
+	// Move confirm
+	PanelContainer _moveConfirmPanel;
+	Button _confirmBtn, _cancelBtn;
+
+	// Drag state for command menu
+	bool _cmdDragging;
+	Vector2 _cmdDragOffset;
 
 	// Inspect
 	Control _inspectOverlay;
@@ -108,7 +117,9 @@ public partial class BattleHUD : CanvasLayer
 		BuildItemSubMenu();
 		BuildTooltip();
 		BuildTileInfo();
+		BuildMoveConfirm();
 		BuildInspectScreen();
+		BuildCrownButton();
 
 		HideCommandMenu();
 		UITheme.ThemeChanged += _ => Rebuild();
@@ -130,6 +141,8 @@ public partial class BattleHUD : CanvasLayer
 		BuildItemSubMenu();
 		BuildTooltip();
 		BuildTileInfo();
+		BuildMoveConfirm();
+		BuildCrownButton();
 		// Re-populate data
 		RebuildAbilityList();
 		RebuildItemList();
@@ -147,18 +160,68 @@ public partial class BattleHUD : CanvasLayer
 		_cmdPanel.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
 		_cmdPanel.Position = new Vector2(-196, -(ChatHeight + 310));
 		_cmdPanel.CustomMinimumSize = new Vector2(170, 0);
+		_cmdPanel.MouseFilter = Control.MouseFilterEnum.Stop;
 		_root.AddChild(_cmdPanel);
+
+		var outerVb = new VBoxContainer();
+		outerVb.AddThemeConstantOverride("separation", 3);
+		_cmdPanel.AddChild(outerVb);
+
+		// Drag handle bar
+		var dragBar = new Panel();
+		dragBar.CustomMinimumSize = new Vector2(0, 20);
+		dragBar.MouseFilter = Control.MouseFilterEnum.Stop;
+		dragBar.MouseDefaultCursorShape = Control.CursorShape.Move;
+		var dragStyle = new StyleBoxFlat();
+		dragStyle.BgColor = Colors.Transparent;
+		dragBar.AddThemeStyleboxOverride("panel", dragStyle);
+		outerVb.AddChild(dragBar);
+
+		// Title + drag hint
+		var titleRow = new HBoxContainer();
+		titleRow.MouseFilter = Control.MouseFilterEnum.Ignore;
+		var titleLbl = new Label();
+		titleLbl.Text = "COMMAND";
+		titleLbl.AddThemeColorOverride("font_color", TxDim);
+		titleLbl.AddThemeFontSizeOverride("font_size", 11);
+		titleLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		titleLbl.HorizontalAlignment = HorizontalAlignment.Center;
+		titleRow.AddChild(titleLbl);
+		var dragHint = new Label();
+		dragHint.Text = "⠿";
+		dragHint.AddThemeColorOverride("font_color", TxDark);
+		dragHint.AddThemeFontSizeOverride("font_size", 12);
+		titleRow.AddChild(dragHint);
+		dragBar.AddChild(titleRow);
+		titleRow.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+
+		// Wire drag events on the drag bar
+		dragBar.GuiInput += (ev) =>
+		{
+			if (ev is InputEventMouseButton mb)
+			{
+				if (mb.ButtonIndex == MouseButton.Left)
+				{
+					_cmdDragging = mb.Pressed;
+					_cmdDragOffset = mb.GlobalPosition - _cmdPanel.GlobalPosition;
+					GetViewport().SetInputAsHandled();
+				}
+			}
+			else if (ev is InputEventMouseMotion mm && _cmdDragging)
+			{
+				_cmdPanel.GlobalPosition = mm.GlobalPosition - _cmdDragOffset;
+				GetViewport().SetInputAsHandled();
+			}
+		};
 
 		_cmdList = new VBoxContainer();
 		_cmdList.AddThemeConstantOverride("separation", 3);
-		_cmdPanel.AddChild(_cmdList);
+		outerVb.AddChild(_cmdList);
 
-		MakeLabel(_cmdList, "COMMAND", TxDim, 11, HorizontalAlignment.Center);
-		MakeSep(_cmdList);
+		MakeSep(outerVb);
 
 		for (int i = 0; i < CmdNames.Length; i++)
 		{
-			// Add separator before End Turn
 			if (i == 6) MakeSep(_cmdList);
 			bool hasSub = CmdNames[i] is "Ability" or "Item";
 			var btn = MakeCmdButton(CmdNames[i], CmdIcons[i], i, hasSub);
@@ -302,22 +365,20 @@ public partial class BattleHUD : CanvasLayer
 	}
 
 	// ═══════════════════════════════════════════════════════
-	//  UNIT INFO CARD — bottom-center, above chat
-	//  Portrait style like Sword of Convallaria
+	//  UNIT INFO CARD — Sword of Convallaria style
+	//  Active unit: bottom-right (always visible during turn)
+	//  Target unit: bottom-left (appears on hover)
+	//  Layout: [info panel | large portrait]
 	// ═══════════════════════════════════════════════════════
 
 	void BuildUnitCard()
 	{
 		_unitCard = MakePanel(BgPanel, BdSubtle);
-		_unitCard.SetAnchorsPreset(Control.LayoutPreset.BottomWide);
-		_unitCard.OffsetLeft = -200;  // will be centered manually
-		_unitCard.OffsetRight = 200;
-		_unitCard.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
-		// Center horizontally: anchor at bottom, position centered
+		// Bottom center-right, inward from edge
 		_unitCard.AnchorLeft = 0.5f; _unitCard.AnchorRight = 0.5f;
-		_unitCard.AnchorBottom = 1f; _unitCard.AnchorTop = 1f;
-		_unitCard.OffsetLeft = -180; _unitCard.OffsetRight = 180;
-		_unitCard.OffsetTop = -(ChatHeight + 90); _unitCard.OffsetBottom = -(ChatHeight + 4);
+		_unitCard.AnchorBottom = 1; _unitCard.AnchorTop = 1;
+		_unitCard.OffsetLeft = 60; _unitCard.OffsetRight = 320;
+		_unitCard.OffsetTop = -(ChatHeight + 120); _unitCard.OffsetBottom = -(ChatHeight + 4);
 		_unitCard.Visible = false;
 		_root.AddChild(_unitCard);
 	}
@@ -325,66 +386,141 @@ public partial class BattleHUD : CanvasLayer
 	void BuildTargetCard()
 	{
 		_targetCard = MakePanel(BgPanel, BdSubtle);
+		// Bottom center-left, inward from edge
 		_targetCard.AnchorLeft = 0.5f; _targetCard.AnchorRight = 0.5f;
-		_targetCard.AnchorBottom = 1f; _targetCard.AnchorTop = 1f;
-		_targetCard.OffsetLeft = 190; _targetCard.OffsetRight = 480;
-		_targetCard.OffsetTop = -(ChatHeight + 90); _targetCard.OffsetBottom = -(ChatHeight + 4);
+		_targetCard.AnchorBottom = 1; _targetCard.AnchorTop = 1;
+		_targetCard.OffsetLeft = -320; _targetCard.OffsetRight = -60;
+		_targetCard.OffsetTop = -(ChatHeight + 120); _targetCard.OffsetBottom = -(ChatHeight + 4);
 		_targetCard.Visible = false;
 		_root.AddChild(_targetCard);
 	}
 
-	void PopulateUnitCard(PanelContainer card, BattleUnit unit)
+	void PopulateUnitCard(PanelContainer card, BattleUnit unit, bool isTarget)
 	{
 		ClearChildren(card);
-		var hbox = new HBoxContainer(); hbox.AddThemeConstantOverride("separation", 10);
+		bool isA = unit.Team == UnitTeam.TeamA;
+		var teamCol = isA ? ColTeamA : ColTeamB;
+
+		var hbox = new HBoxContainer();
+		hbox.AddThemeConstantOverride("separation", 0);
 		card.AddChild(hbox);
 
-		// Portrait placeholder
+		// ─── Info column (left side) ───
+		var infoVb = new VBoxContainer();
+		infoVb.AddThemeConstantOverride("separation", 3);
+		infoVb.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+		// HP number — large and prominent
+		var hpNum = new Label();
+		float hpPct = unit.MaxHp > 0 ? (float)unit.CurrentHp / unit.MaxHp : 0;
+		hpNum.Text = $"{unit.CurrentHp}/{unit.MaxHp}";
+		hpNum.AddThemeColorOverride("font_color", TxBright);
+		hpNum.AddThemeFontSizeOverride("font_size", 22);
+		infoVb.AddChild(hpNum);
+
+		// HP bar — full width, chunky
+		AddTorBar(infoVb, hpPct, true, 10);
+
+		// EP bar — thinner
+		float epPct = unit.MaxEther > 0 ? (float)unit.CurrentEther / unit.MaxEther : 0;
+		AddTorBar(infoVb, epPct, false, 5);
+
+		// Stars row with class icon
+		var starsRow = new HBoxContainer(); starsRow.AddThemeConstantOverride("separation", 4);
+		var classIcon = new Label();
+		classIcon.Text = "◆"; classIcon.AddThemeColorOverride("font_color", ColGold);
+		classIcon.AddThemeFontSizeOverride("font_size", 12);
+		starsRow.AddChild(classIcon);
+		int lvl = (unit.Strength + unit.Speed + unit.Agility + unit.Endurance + unit.Stamina + unit.EtherControl) / 6;
+		int stars = Mathf.Clamp(lvl / 10 + 1, 1, 5);
+		var starLabel = new Label();
+		starLabel.Text = new string('★', stars) + new string('☆', 5 - stars);
+		starLabel.AddThemeColorOverride("font_color", ColGold);
+		starLabel.AddThemeFontSizeOverride("font_size", 11);
+		starsRow.AddChild(starLabel);
+		infoVb.AddChild(starsRow);
+
+		// Level circle + Name
+		var nameRow = new HBoxContainer(); nameRow.AddThemeConstantOverride("separation", 6);
+		var lvlPanel = new PanelContainer();
+		var lvlStyle = new StyleBoxFlat();
+		lvlStyle.BgColor = new Color(teamCol, 0.2f);
+		lvlStyle.BorderColor = teamCol; lvlStyle.SetBorderWidthAll(1);
+		lvlStyle.SetCornerRadiusAll(12);
+		lvlStyle.ContentMarginLeft = 5; lvlStyle.ContentMarginRight = 5;
+		lvlStyle.ContentMarginTop = 1; lvlStyle.ContentMarginBottom = 1;
+		lvlPanel.AddThemeStyleboxOverride("panel", lvlStyle);
+		var lvlLabel = new Label();
+		lvlLabel.Text = lvl.ToString();
+		lvlLabel.AddThemeColorOverride("font_color", teamCol);
+		lvlLabel.AddThemeFontSizeOverride("font_size", 13);
+		lvlLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		lvlPanel.AddChild(lvlLabel);
+		nameRow.AddChild(lvlPanel);
+		var nameLbl = new Label();
+		nameLbl.Text = unit.Name;
+		nameLbl.AddThemeColorOverride("font_color", TxBright);
+		nameLbl.AddThemeFontSizeOverride("font_size", 14);
+		nameRow.AddChild(nameLbl);
+		infoVb.AddChild(nameRow);
+
+		// ─── Portrait (right side, large) ───
 		var portrait = new PanelContainer();
 		var pStyle = new StyleBoxFlat();
-		pStyle.BgColor = UITheme.IsDarkMode ? new Color(0.08f, 0.08f, 0.14f, 0.6f) : new Color(0.9f, 0.9f, 0.92f, 0.8f);
-		pStyle.SetCornerRadiusAll(4); pStyle.SetContentMarginAll(0);
+		pStyle.BgColor = UITheme.IsDarkMode ? new Color(0.05f, 0.05f, 0.09f, 0.9f) : new Color(0.93f, 0.93f, 0.96f, 0.95f);
+		pStyle.BorderWidthLeft = 2; pStyle.BorderColor = teamCol;
+		pStyle.SetCornerRadiusAll(0);
+		pStyle.CornerRadiusTopRight = 4; pStyle.CornerRadiusBottomRight = 4;
+		pStyle.SetContentMarginAll(0);
 		portrait.AddThemeStyleboxOverride("panel", pStyle);
-		portrait.CustomMinimumSize = new Vector2(60, 70);
+		portrait.CustomMinimumSize = new Vector2(85, 100);
 		var pIcon = new Label();
 		pIcon.Text = "⚔"; pIcon.HorizontalAlignment = HorizontalAlignment.Center;
 		pIcon.VerticalAlignment = VerticalAlignment.Center;
-		pIcon.AddThemeFontSizeOverride("font_size", 28);
-		pIcon.AddThemeColorOverride("font_color", new Color(UITheme.Accent, 0.4f));
+		pIcon.AddThemeFontSizeOverride("font_size", 40);
+		pIcon.AddThemeColorOverride("font_color", new Color(teamCol, 0.4f));
 		portrait.AddChild(pIcon);
+
+		// Assemble: [info] [portrait]
+		hbox.AddChild(infoVb);
+		var pad = new Control(); pad.CustomMinimumSize = new Vector2(6, 0); hbox.AddChild(pad);
 		hbox.AddChild(portrait);
+	}
 
-		// Info column
-		var vb = new VBoxContainer(); vb.AddThemeConstantOverride("separation", 1);
-		vb.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		hbox.AddChild(vb);
+	void AddTorBar(VBoxContainer par, float pct, bool hp, int barHeight)
+	{
+		var bg = new Panel();
+		bg.CustomMinimumSize = new Vector2(0, barHeight);
+		var bgs = new StyleBoxFlat();
+		bgs.BgColor = UITheme.IsDarkMode ? new Color(0.1f, 0.1f, 0.15f, 0.8f) : new Color(0, 0, 0, 0.06f);
+		bgs.SetCornerRadiusAll(2);
+		bg.AddThemeStyleboxOverride("panel", bgs);
+		par.AddChild(bg);
 
-		var teamCol = unit.Team == UnitTeam.TeamA ? ColTeamA : ColTeamB;
-		MakeLabel(vb, unit.Name, teamCol, 15);
-
-		// HP bar
-		AddCompactBar(vb, "HP", unit.CurrentHp, unit.MaxHp, true);
-		AddCompactBar(vb, "EP", unit.CurrentEther, unit.MaxEther, false);
-
-		var statsLine = new Label();
-		statsLine.Text = $"ATK {unit.Atk} · DEF {unit.Def} · AVD {unit.Avd} · MOV {unit.Move}";
-		statsLine.AddThemeColorOverride("font_color", TxDim);
-		statsLine.AddThemeFontSizeOverride("font_size", 10);
-		vb.AddChild(statsLine);
+		var fill = new Panel();
+		fill.AnchorLeft = 0; fill.AnchorRight = Mathf.Clamp(pct, 0, 1);
+		fill.AnchorTop = 0; fill.AnchorBottom = 1;
+		fill.OffsetLeft = 1; fill.OffsetRight = -1; fill.OffsetTop = 1; fill.OffsetBottom = -1;
+		var fs = new StyleBoxFlat();
+		fs.BgColor = hp ? (pct > 0.5f ? ColHpFull : pct > 0.25f ? ColHpMid : ColHpLow) : ColEther;
+		fs.SetCornerRadiusAll(2);
+		fill.AddThemeStyleboxOverride("panel", fs);
+		fill.MouseFilter = Control.MouseFilterEnum.Ignore;
+		bg.AddChild(fill);
 	}
 
 	public void UpdateUnitInfo(BattleUnit unit)
 	{
 		if (unit == null) { _unitCard.Visible = false; return; }
 		_activeUnit = unit; _unitCard.Visible = true;
-		PopulateUnitCard(_unitCard, unit);
+		PopulateUnitCard(_unitCard, unit, false);
 	}
 
 	public void UpdateTargetInfo(BattleUnit unit)
 	{
 		if (unit == null) { _targetCard.Visible = false; return; }
 		_targetCard.Visible = true;
-		PopulateUnitCard(_targetCard, unit);
+		PopulateUnitCard(_targetCard, unit, true);
 	}
 
 	// ═══════════════════════════════════════════════════════
@@ -429,6 +565,62 @@ public partial class BattleHUD : CanvasLayer
 		MakeLabel(vb, u.Name, active ? TxBright : TxDim, 10, HorizontalAlignment.Center);
 		MakeLabel(vb, $"RT:{u.CurrentRt}", TxDark, 9, HorizontalAlignment.Center);
 		return p;
+	}
+
+	// ═══════════════════════════════════════════════════════
+	//  MOVE CONFIRM PANEL — appears when tile selected
+	// ═══════════════════════════════════════════════════════
+
+	void BuildMoveConfirm()
+	{
+		_moveConfirmPanel = MakePanel(BgPanel, BdPrimary);
+		_moveConfirmPanel.AnchorLeft = 0.5f; _moveConfirmPanel.AnchorRight = 0.5f;
+		_moveConfirmPanel.AnchorBottom = 1f; _moveConfirmPanel.AnchorTop = 1f;
+		_moveConfirmPanel.OffsetLeft = -90; _moveConfirmPanel.OffsetRight = 90;
+		_moveConfirmPanel.OffsetTop = -(ChatHeight + 50); _moveConfirmPanel.OffsetBottom = -(ChatHeight + 4);
+		_moveConfirmPanel.Visible = false;
+		_root.AddChild(_moveConfirmPanel);
+
+		var hb = new HBoxContainer();
+		hb.AddThemeConstantOverride("separation", 8);
+		hb.Alignment = BoxContainer.AlignmentMode.Center;
+		_moveConfirmPanel.AddChild(hb);
+
+		_confirmBtn = new Button();
+		_confirmBtn.Text = "✓ Confirm";
+		_confirmBtn.CustomMinimumSize = new Vector2(80, 30);
+		ApplyConfirmBtnTheme(_confirmBtn, true);
+		_confirmBtn.Pressed += () => EmitSignal(SignalName.MoveConfirmed);
+		hb.AddChild(_confirmBtn);
+
+		_cancelBtn = new Button();
+		_cancelBtn.Text = "✕ Cancel";
+		_cancelBtn.CustomMinimumSize = new Vector2(80, 30);
+		ApplyConfirmBtnTheme(_cancelBtn, false);
+		_cancelBtn.Pressed += () => EmitSignal(SignalName.CommandCancelled);
+		hb.AddChild(_cancelBtn);
+	}
+
+	void ApplyConfirmBtnTheme(Button btn, bool primary)
+	{
+		var col = primary ? new Color("44aa66") : new Color("aa4444");
+		btn.AddThemeStyleboxOverride("normal", MakeBtnStyle(new Color(col, 0.2f), col));
+		btn.AddThemeStyleboxOverride("hover", MakeBtnStyle(new Color(col, 0.35f), col));
+		btn.AddThemeStyleboxOverride("focus", MakeBtnStyle(new Color(col, 0.35f), col));
+		btn.AddThemeStyleboxOverride("pressed", MakeBtnStyle(new Color(col, 0.5f), col));
+		btn.AddThemeColorOverride("font_color", TxBright);
+		btn.AddThemeColorOverride("font_hover_color", TxBright);
+		btn.AddThemeFontSizeOverride("font_size", 13);
+	}
+
+	public void ShowMoveConfirm(int tileX, int tileY)
+	{
+		_moveConfirmPanel.Visible = true;
+	}
+
+	public void HideMoveConfirm()
+	{
+		_moveConfirmPanel.Visible = false;
 	}
 
 	// ═══════════════════════════════════════════════════════
@@ -595,6 +787,57 @@ public partial class BattleHUD : CanvasLayer
 	}
 
 	// ═══════════════════════════════════════════════════════
+	//  CROWN BUTTON — access main menus during battle
+	// ═══════════════════════════════════════════════════════
+
+	Button _crownBtn;
+
+	void BuildCrownButton()
+	{
+		_crownBtn = new Button();
+		_crownBtn.Text = "👑";
+		_crownBtn.TooltipText = "Main Menu";
+		_crownBtn.CustomMinimumSize = new Vector2(40, 40);
+		_crownBtn.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+		_crownBtn.Position = new Vector2(16, 12);
+
+		var normal = new StyleBoxFlat();
+		normal.BgColor = BgPanel;
+		normal.SetCornerRadiusAll(6);
+		normal.SetContentMarginAll(4);
+		normal.BorderColor = BdSubtle;
+		normal.SetBorderWidthAll(1);
+		_crownBtn.AddThemeStyleboxOverride("normal", normal);
+
+		var hover = (StyleBoxFlat)normal.Duplicate();
+		hover.BgColor = UITheme.IsDarkMode ? new Color(0.1f, 0.1f, 0.18f, 0.95f) : new Color(0.95f, 0.95f, 1f, 0.98f);
+		hover.BorderColor = UITheme.Accent;
+		_crownBtn.AddThemeStyleboxOverride("hover", hover);
+		_crownBtn.AddThemeStyleboxOverride("focus", hover);
+
+		_crownBtn.AddThemeFontSizeOverride("font_size", 20);
+		_crownBtn.Pressed += OnCrownPressed;
+		_root.AddChild(_crownBtn);
+	}
+
+	void OnCrownPressed()
+	{
+		// Find and toggle the overworld sidebar visibility
+		var scene = GetTree().CurrentScene;
+		if (scene == null) return;
+		var hud = scene.FindChild("OverworldHUD", true, false) as Control;
+		if (hud == null) return;
+		foreach (var child in hud.GetChildren())
+		{
+			if (child is VBoxContainer vb)
+			{
+				vb.Visible = !vb.Visible;
+				break;
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════════════════
 	//  PUBLIC API
 	// ═══════════════════════════════════════════════════════
 
@@ -613,7 +856,7 @@ public partial class BattleHUD : CanvasLayer
 		CloseSubMenus(); SelectCmd(0); UpdateUnitInfo(unit);
 	}
 
-	public void HideCommandMenu() { _menuOpen = false; _cmdPanel.Visible = false; CloseSubMenus(); }
+	public void HideCommandMenu() { _menuOpen = false; _cmdPanel.Visible = false; CloseSubMenus(); HideMoveConfirm(); }
 
 	public void InspectUnit(BattleUnit unit)
 	{
@@ -747,13 +990,22 @@ public partial class BattleHUD : CanvasLayer
 	{
 		var h = new HBoxContainer(); h.AddThemeConstantOverride("separation", 4); par.AddChild(h);
 		MakeLabel(h, label, TxDark, 10);
-		var bg = new Panel(); bg.CustomMinimumSize = new Vector2(100, 10); bg.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		var bgs = new StyleBoxFlat(); bgs.BgColor = UITheme.IsDarkMode ? new Color(0.1f, 0.1f, 0.15f, 0.8f) : new Color(0,0,0,0.06f);
+
+		// Track background
+		var bg = new Panel(); bg.CustomMinimumSize = new Vector2(120, 10); bg.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		var bgs = new StyleBoxFlat(); bgs.BgColor = UITheme.IsDarkMode ? new Color(0.1f, 0.1f, 0.15f, 0.8f) : new Color(0, 0, 0, 0.06f);
 		bgs.SetCornerRadiusAll(2); bg.AddThemeStyleboxOverride("panel", bgs); h.AddChild(bg);
-		float pct = max > 0 ? (float)cur / max : 0;
-		var fill = new Panel(); fill.SetAnchorsPreset(Control.LayoutPreset.LeftWide); fill.Size = new Vector2(100 * pct, 10);
+
+		// Fill bar using anchors
+		float pct = max > 0 ? Mathf.Clamp((float)cur / max, 0f, 1f) : 0;
+		var fill = new Panel();
+		fill.AnchorLeft = 0; fill.AnchorRight = pct;
+		fill.AnchorTop = 0; fill.AnchorBottom = 1;
+		fill.OffsetLeft = 1; fill.OffsetRight = -1; fill.OffsetTop = 1; fill.OffsetBottom = -1;
 		var fs = new StyleBoxFlat(); fs.BgColor = hp ? (pct > 0.5f ? ColHpFull : pct > 0.25f ? ColHpMid : ColHpLow) : ColEther;
-		fs.SetCornerRadiusAll(2); fill.AddThemeStyleboxOverride("panel", fs); bg.AddChild(fill);
+		fs.SetCornerRadiusAll(2); fill.AddThemeStyleboxOverride("panel", fs); fill.MouseFilter = Control.MouseFilterEnum.Ignore;
+		bg.AddChild(fill);
+
 		MakeLabel(h, $"{cur}/{max}", TxDim, 10);
 	}
 

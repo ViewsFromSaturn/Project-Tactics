@@ -30,10 +30,11 @@ public partial class IsoBattleRenderer : Node3D
 	private static readonly Color ColGridLine = new("ffffff12");
 
 	// Highlights
-	private static readonly Color ColHover       = new("aaccff30");
-	private static readonly Color ColMoveRange   = new("4499ff45");
-	private static readonly Color ColAttackRange = new("ff445555");
-	private static readonly Color ColSelected    = new("ffcc4460");
+	private static readonly Color ColHover       = new("aaccff50");
+	private static readonly Color ColMoveRange   = new("4499ff80");
+	private static readonly Color ColAttackRange = new("ff4455bb");
+	private static readonly Color ColSelected    = new("ffcc4490");
+	private static readonly Color ColMovePreview = new("aa55ff90"); // Purple — pending move confirm
 
 	// Units
 	private static readonly Color ColTeamA = new("5599ee");
@@ -50,6 +51,7 @@ public partial class IsoBattleRenderer : Node3D
 	private Vector2I _hoveredTile = new(-1, -1);
 	private Camera3D _camera;
 
+	private readonly HashSet<int> _heightLevels = new();
 	private readonly HashSet<Vector2I> _moveHighlights = new();
 	private readonly HashSet<Vector2I> _attackHighlights = new();
 	private Vector2I _selectedTile = new(-1, -1);
@@ -99,10 +101,12 @@ public partial class IsoBattleRenderer : Node3D
 
 	private void BuildGrid()
 	{
+		_heightLevels.Clear();
 		for (int x = 0; x < _grid.Width; x++)
 		for (int y = 0; y < _grid.Height; y++)
 		{
 			var tile = _grid.At(x, y);
+			_heightLevels.Add(tile.Height);
 			var tileNode = BuildTileVisual(tile);
 			AddChild(tileNode);
 			_tileNodes[new Vector2I(x, y)] = tileNode;
@@ -118,7 +122,7 @@ public partial class IsoBattleRenderer : Node3D
 		groundMat.AlbedoColor = new Color("12141a");
 		groundMat.ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded;
 		ground.MaterialOverride = groundMat;
-		ground.Position = new Vector3(0, -0.1f, mapSpan * 0.5f);
+		ground.Position = new Vector3(mapSpan * 0.5f, -0.1f, mapSpan * 0.5f);
 		AddChild(ground);
 	}
 
@@ -264,21 +268,24 @@ public partial class IsoBattleRenderer : Node3D
 
 	// ═══════════════════════════════════════════════════════
 	//  COORDINATE CONVERSION
+	//  Tiles are placed on a regular XZ grid. The camera's
+	//  isometric angle creates the diamond appearance, just
+	//  like Tactics Ogre Reborn.
 	// ═══════════════════════════════════════════════════════
 
 	public static Vector3 GridToWorld(int gx, int gy, int height)
 	{
-		float wx = (gx - gy) * TileSize * 0.5f;
-		float wz = (gx + gy) * TileSize * 0.5f;
+		float wx = gx * TileSize;
+		float wz = gy * TileSize;
 		float wy = height * HeightStep;
 		return new Vector3(wx, wy, wz);
 	}
 
 	public Vector2I WorldToGrid(Vector3 worldPos)
 	{
-		float gx = (worldPos.X / (TileSize * 0.5f) + worldPos.Z / (TileSize * 0.5f)) / 2f;
-		float gy = (worldPos.Z / (TileSize * 0.5f) - worldPos.X / (TileSize * 0.5f)) / 2f;
-		return new Vector2I(Mathf.RoundToInt(gx), Mathf.RoundToInt(gy));
+		int gx = Mathf.RoundToInt(worldPos.X / TileSize);
+		int gy = Mathf.RoundToInt(worldPos.Z / TileSize);
+		return new Vector2I(gx, gy);
 	}
 
 	// ═══════════════════════════════════════════════════════
@@ -321,7 +328,35 @@ public partial class IsoBattleRenderer : Node3D
 	{
 		ClearMoveHighlights();
 		ClearAttackHighlights();
+		ClearMovePreview();
 		_selectedTile = new(-1, -1);
+	}
+
+	// ─── MOVE PREVIEW (purple confirm target + path) ─────
+	private readonly HashSet<Vector2I> _previewHighlights = new();
+
+	public void ShowMovePreview(Vector2I target, List<Vector2I> path)
+	{
+		ClearMovePreview();
+		// Highlight the path tiles in a dimmer purple
+		if (path != null)
+		{
+			foreach (var p in path)
+			{
+				if (p == target) continue;
+				_previewHighlights.Add(p);
+				SetTileOverlay(p, new Color("8844cc60"));
+			}
+		}
+		// Highlight the destination in bright purple
+		_previewHighlights.Add(target);
+		SetTileOverlay(target, ColMovePreview);
+	}
+
+	public void ClearMovePreview()
+	{
+		foreach (var pos in _previewHighlights) RemoveTileOverlay(pos);
+		_previewHighlights.Clear();
 	}
 
 	private void SetTileOverlay(Vector2I pos, Color color)
@@ -348,11 +383,12 @@ public partial class IsoBattleRenderer : Node3D
 		mat.ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded;
 		mat.EmissionEnabled = true;
 		mat.Emission = new Color(color.R, color.G, color.B, 1f);
-		mat.EmissionEnergyMultiplier = 0.3f;
+		mat.EmissionEnergyMultiplier = 0.5f;
+		mat.RenderPriority = 1; // render on top of tile textures
 		mesh.MaterialOverride = mat;
 
 		mesh.Position = GridToWorld(pos.X, pos.Y, tile.Height)
-			+ new Vector3(0, TileTopThick * 0.5f + 0.01f, 0);
+			+ new Vector3(0, TileTopThick * 0.5f + 0.02f, 0);
 		AddChild(mesh);
 		_highlightMeshes[pos] = mesh;
 	}
@@ -511,17 +547,29 @@ public partial class IsoBattleRenderer : Node3D
 			var gridPos = ScreenToGrid(mm.Position);
 			if (gridPos != _hoveredTile)
 			{
-				if (_grid.InBounds(_hoveredTile)
-					&& !_moveHighlights.Contains(_hoveredTile)
-					&& !_attackHighlights.Contains(_hoveredTile))
-					RemoveTileOverlay(_hoveredTile);
+				// Restore previous hovered tile
+				if (_grid.InBounds(_hoveredTile))
+				{
+					if (_moveHighlights.Contains(_hoveredTile))
+						SetTileOverlay(_hoveredTile, ColMoveRange);  // restore blue
+					else if (_attackHighlights.Contains(_hoveredTile))
+						SetTileOverlay(_hoveredTile, ColAttackRange);
+					else if (!_previewHighlights.Contains(_hoveredTile))
+						RemoveTileOverlay(_hoveredTile);
+				}
 
 				_hoveredTile = gridPos;
 
 				if (_grid.InBounds(gridPos))
 				{
-					if (!_moveHighlights.Contains(gridPos) && !_attackHighlights.Contains(gridPos))
+					// Purple hover for move-range tiles, red-ish for attack, default otherwise
+					if (_moveHighlights.Contains(gridPos))
+						SetTileOverlay(gridPos, ColMovePreview);
+					else if (_attackHighlights.Contains(gridPos))
+						SetTileOverlay(gridPos, new Color("ff6666bb"));
+					else if (!_previewHighlights.Contains(gridPos))
 						SetTileOverlay(gridPos, ColHover);
+
 					EmitSignal(SignalName.TileHovered, gridPos.X, gridPos.Y);
 				}
 			}
@@ -548,37 +596,32 @@ public partial class IsoBattleRenderer : Node3D
 		if (_camera == null) return new(-1, -1);
 
 		var from = _camera.ProjectRayOrigin(screenPos);
-		var dir = _camera.ProjectRayNormal(screenPos);
+		var dir  = _camera.ProjectRayNormal(screenPos);
 
 		if (Mathf.Abs(dir.Y) < 0.001f) return new(-1, -1);
 
-		// Instead of checking each height plane separately, check all tiles
-		// by projecting the ray onto each tile's actual height plane
+		// Cast ray against each distinct height plane, use WorldToGrid
+		// for proper isometric diamond-to-grid conversion
 		Vector2I bestTile = new(-1, -1);
-		float bestDist = float.MaxValue;
+		float    bestT    = float.MaxValue;
 
-		for (int x = 0; x < _grid.Width; x++)
-		for (int y = 0; y < _grid.Height; y++)
+		foreach (int h in _heightLevels)
 		{
-			var tile = _grid.At(x, y);
-			if (tile == null) continue;
-
-			float planeY = tile.Height * HeightStep + TileTopThick * 0.5f;
+			float planeY = h * HeightStep + TileTopThick * 0.5f;
 			float t = (planeY - from.Y) / dir.Y;
-			if (t < 0) continue;
+			if (t < 0 || t >= bestT) continue;
 
 			var hitPoint = from + dir * t;
-			var worldPos = GridToWorld(x, y, tile.Height);
+			var gridPos  = WorldToGrid(hitPoint);
 
-			// Check if hit point is within this tile's bounds (half tile size)
-			float halfTile = (TileSize - TileGap) * 0.5f;
-			float dx = Mathf.Abs(hitPoint.X - worldPos.X);
-			float dz = Mathf.Abs(hitPoint.Z - worldPos.Z);
-
-			if (dx <= halfTile && dz <= halfTile && t < bestDist)
+			if (_grid.InBounds(gridPos))
 			{
-				bestDist = t;
-				bestTile = new Vector2I(x, y);
+				var tile = _grid.At(gridPos);
+				if (tile != null && tile.Height == h)
+				{
+					bestT    = t;
+					bestTile = gridPos;
+				}
 			}
 		}
 
