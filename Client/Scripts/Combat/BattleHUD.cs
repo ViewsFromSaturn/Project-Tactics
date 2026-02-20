@@ -431,7 +431,7 @@ public partial class BattleHUD : CanvasLayer
 		classIcon.Text = "◆"; classIcon.AddThemeColorOverride("font_color", ColGold);
 		classIcon.AddThemeFontSizeOverride("font_size", 12);
 		starsRow.AddChild(classIcon);
-		int lvl = (unit.Strength + unit.Speed + unit.Agility + unit.Endurance + unit.Stamina + unit.EtherControl) / 6;
+		int lvl = (unit.Strength + unit.Vitality + unit.Dexterity + unit.Agility + unit.Mind + unit.EtherControl) / 6;
 		int stars = Mathf.Clamp(lvl / 10 + 1, 1, 5);
 		var starLabel = new Label();
 		starLabel.Text = new string('★', stars) + new string('☆', 5 - stars);
@@ -804,7 +804,7 @@ public partial class BattleHUD : CanvasLayer
 		ph.AddThemeFontSizeOverride("font_size", 64); ph.AddThemeColorOverride("font_color", new Color(UITheme.Accent, 0.3f));
 		frame.AddChild(ph);
 
-		int lvl = (u.Strength + u.Speed + u.Agility + u.Endurance + u.Stamina + u.EtherControl) / 6;
+		int lvl = (u.Strength + u.Vitality + u.Dexterity + u.Agility + u.Mind + u.EtherControl) / 6;
 		MakeLabel(pvb, u.Name, TxBright, 20, HorizontalAlignment.Center);
 		MakeLabel(pvb, "▸ Combatant", UITheme.Accent, 13, HorizontalAlignment.Center);
 		MakeLabel(pvb, $"Lv. {lvl} · {u.Team}", TxDark, 12, HorizontalAlignment.Center);
@@ -833,7 +833,7 @@ public partial class BattleHUD : CanvasLayer
 		svb.AddChild(sg);
 		AddStat(sg, "Strength", u.Strength); AddStat(sg, "Vitality", u.Vitality);
 		AddStat(sg, "Agility", u.Agility); AddStat(sg, "Dexterity", u.Dexterity);
-		AddStat(sg, "Stamina", u.Stamina); AddStat(sg, "Ether Ctrl", u.EtherControl);
+		AddStat(sg, "Mind", u.Mind); AddStat(sg, "Ether Ctrl", u.EtherControl);
 
 		AddSection(svb, "◆ DERIVED");
 		var dg = new GridContainer(); dg.Columns = 2;

@@ -156,8 +156,8 @@ public class BattleUnit
 			Name = name, Team = team, GridPosition = pos,
 			Facing = team == UnitTeam.TeamA ? Facing.North : Facing.South,
 
-			Strength = str, Speed = spd, Agility = agi,
-			Endurance = end, Stamina = sta, EtherControl = etc,
+			Strength = str, Dexterity = spd, Agility = agi,
+			Vitality = end, Mind = sta, EtherControl = etc,
 
 			MaxHp = 200 + end * 15 + sta * 8,
 			MaxAether = 100 + etc * 20 + sta * 5,

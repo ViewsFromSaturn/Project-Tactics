@@ -90,14 +90,15 @@ def create_character():
         allegiance="None",
         rp_rank="Aspirant",
         strength=1,
-        speed=1,
+        vitality=1,
         agility=1,
-        endurance=1,
-        stamina=1,
+        dexterity=1,
+        mind=1,
         ether_control=1,
-        daily_points_remaining=5,
+        training_points_bank=0,
         race_hp_mod=1.0,
-        race_ether_mod=1.0,
+        race_stamina_mod=1.0,
+        race_aether_mod=1.0,
         race_atk_mod=1.0,
         race_eatk_mod=1.0,
         race_avd_mod=1.0,
@@ -106,7 +107,8 @@ def create_character():
 
     # Initialize HP/Ether to max
     character.current_hp = character.max_hp
-    character.current_ether = character.max_ether
+    character.current_stamina = character.max_stamina
+    character.current_aether = character.max_aether
 
     db.session.add(character)
     db.session.commit()
@@ -145,8 +147,8 @@ def update_character(character_id):
     data = request.get_json()
 
     # Only allow updating specific fields from client
-    allowed_fields = ["bio", "current_hp", "current_ether",
-                      "daily_points_remaining", "last_training_date"]
+    allowed_fields = ["bio", "current_hp", "current_stamina", "current_aether",
+                      "training_points_bank", "last_reset_date"]
 
     for field in allowed_fields:
         if field in data:
@@ -200,14 +202,14 @@ def train_stat(character_id):
     valid_stats = {
         "strength": "strength",
         "str": "strength",
-        "speed": "speed",
-        "spd": "speed",
+        "vitality": "vitality",
+        "vit": "vitality",
         "agility": "agility",
         "agi": "agility",
-        "endurance": "endurance",
-        "end": "endurance",
-        "stamina": "stamina",
-        "sta": "stamina",
+        "dexterity": "dexterity",
+        "dex": "dexterity",
+        "mind": "mind",
+        "mnd": "mind",
         "ether_control": "ether_control",
         "etc": "ether_control",
     }
@@ -217,31 +219,33 @@ def train_stat(character_id):
 
     stat_name = valid_stats[stat]
 
-    # Check daily reset
+    # Check daily reset — add TP to bank (v3.0: TP persists, daily cap on earning)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if character.last_training_date != today:
-        # Calculate daily points based on character level
+    if character.last_reset_date != today:
         level = character.character_level
         if level < 10:
-            character.daily_points_remaining = 5
+            daily_tp = 5
         elif level < 20:
-            character.daily_points_remaining = 3
+            daily_tp = 3
         else:
-            character.daily_points_remaining = 1
-        character.last_training_date = today
+            daily_tp = 1
+        character.training_points_bank += daily_tp  # Add to bank, not replace
+        character.daily_tp_earned = 0
+        character.daily_rp_sessions = 0
+        character.last_reset_date = today
 
     if points < 1:
         return jsonify({"error": "Must allocate at least 1 point."}), 400
 
-    if character.daily_points_remaining < points:
+    if character.training_points_bank < points:
         return jsonify({
-            "error": f"Not enough points. Remaining: {character.daily_points_remaining}"
+            "error": f"Not enough points. Remaining: {character.training_points_bank}"
         }), 400
 
     # ─── SOFT CAP (DIMINISHING RETURNS) ──────────────────
     current_value = getattr(character, stat_name)
-    stats = [character.strength, character.speed, character.agility,
-             character.endurance, character.stamina, character.ether_control]
+    stats = [character.strength, character.vitality, character.agility,
+             character.dexterity, character.mind, character.ether_control]
     lowest = min(stats)
     gap = current_value - lowest
 
@@ -250,7 +254,7 @@ def train_stat(character_id):
     points_spent = 0
 
     for _ in range(points):
-        if points_spent >= character.daily_points_remaining:
+        if points_spent >= character.training_points_bank:
             break
 
         if gap < 10:
@@ -260,7 +264,7 @@ def train_stat(character_id):
         else:
             cost = 4   # 25% efficiency
 
-        if points_spent + cost > character.daily_points_remaining:
+        if points_spent + cost > character.training_points_bank:
             break
 
         actual_gain += 1
@@ -276,11 +280,11 @@ def train_stat(character_id):
 
     # Apply
     setattr(character, stat_name, current_value + actual_gain)
-    character.daily_points_remaining -= points_spent
+    character.training_points_bank -= points_spent
 
     # Recalc current HP/ether (cap at new max)
     character.current_hp = min(character.current_hp, character.max_hp)
-    character.current_ether = min(character.current_ether, character.max_ether)
+    character.current_aether = min(character.current_aether, character.max_aether)
 
     db.session.commit()
 
