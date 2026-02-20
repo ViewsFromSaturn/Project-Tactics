@@ -7,20 +7,15 @@ public enum Facing { North, East, South, West }
 public enum UnitTeam { TeamA, TeamB }
 
 /// <summary>
-/// RT System (Tactics Ogre style):
+/// RT System (Tactics Ogre style) — v3.0:
 /// 
-/// WT (Wait Time) = base speed from stats + equipment weight.
-///   This is how long you wait if you do NOTHING on your turn.
-///   Formula: WT = clamp(125 - AGI - SPD/2 + EquipWeight, 60, 180)
+/// WT (Wait Time) = base from DEX + AGI + equipment weight.
+///   Formula: WT = clamp(125 - DEX - AGI/2 + EquipWeight, 60, 180)
 /// 
 /// RT (Recovery Time) = WT + movement cost + action cost.
-///   Movement: each tile moved costs MoveRtPerTile (based on SPD).
-///   Actions: each weapon/spell/ability has its own RT cost.
-///   If you only move OR only act (not both): WT is reduced to 75%.
-///   If you do neither (Wait): WT is reduced to 50%.
-/// 
-/// After your turn ends, your CurrentRt is set to the total.
-/// All units tick down together. Lowest RT acts next.
+///   Movement: each tile moved costs MoveRtPerTile (based on AGI).
+///   If you only move OR only act (not both): WT reduced to 75%.
+///   If you do neither (Wait): WT reduced to 50%.
 /// </summary>
 public class BattleUnit
 {
@@ -34,86 +29,93 @@ public class BattleUnit
 	public Facing Facing = Facing.South;
 	public bool HasMoved;
 	public bool HasActed;
-	public int TilesMoved;  // track how far we moved this turn
+	public int TilesMoved;
 
 	// ─── BASE STATS (from PlayerData) ────────────────────
 	public int Strength, Vitality, Dexterity, Agility, EtherControl, Mind;
-	public int MaxHp, MaxAether;
-	public int CurrentHp, CurrentAether;
+
+	// ─── RESOURCE POOLS (v3.0: HP / Stamina / Aether) ────
+	public int MaxHp, MaxStamina, MaxAether;
+	public int CurrentHp, CurrentStamina, CurrentAether;
+
+	// ─── REGEN (per combat turn) ─────────────────────────
+	public int HpRegen, StaminaRegen, AetherRegen;
+
+	// ─── DERIVED COMBAT STATS ────────────────────────────
 	public int Atk, Def, Eatk, Edef, Avd, Acc;
 	public float CritPercent;
+	public int HealPower, StatusResist;
 	public int Move, Jump;
 
 	// ─── WT/RT SYSTEM ────────────────────────────────────
-	/// <summary>Base Wait Time — how long you wait if you do nothing.
-	/// Lower = faster. Affected by AGI, SPD, and equipment weight.</summary>
 	public int BaseWt;
-
-	/// <summary>RT cost per tile moved. Lower SPD = higher cost.
-	/// Formula: clamp(8 - SPD/5, 3, 8)</summary>
 	public int MoveRtPerTile;
-
-	/// <summary>Current countdown. When this hits 0, unit acts.</summary>
 	public int CurrentRt;
-
-	/// <summary>Equipment weight contribution to WT.</summary>
 	public int EquipWeight;
 
 	// ─── RT CALCULATION ──────────────────────────────────
 
-	/// <summary>
-	/// Calculate total RT after a turn ends.
-	/// Mirrors Tactics Ogre: WT is base, reduced if you didn't do everything.
-	/// Movement and action RT are added on top.
-	/// </summary>
 	public int CalculateTurnRt(int tilesMoved, int actionRt, bool didMove, bool didAct)
 	{
-		// Base WT modifier based on what you did
-		float wtMultiplier;
-		if (didMove && didAct)
-			wtMultiplier = 1.0f;      // full WT — you did everything
-		else if (didMove || didAct)
-			wtMultiplier = 0.75f;     // only moved OR only acted
-		else
-			wtMultiplier = 0.50f;     // waited — quickest recovery
+		float wtMult;
+		if (didMove && didAct)       wtMult = 1.0f;
+		else if (didMove || didAct)  wtMult = 0.75f;
+		else                         wtMult = 0.50f;
 
-		int wt = (int)(BaseWt * wtMultiplier);
-		int moveRt = tilesMoved * MoveRtPerTile;
-		int totalRt = wt + moveRt + actionRt;
-
-		return totalRt;
+		return (int)(BaseWt * wtMult) + tilesMoved * MoveRtPerTile + actionRt;
 	}
 
-	/// <summary>End turn: set RT based on what was done.</summary>
 	public void EndTurn(int actionRt)
 	{
 		CurrentRt = CalculateTurnRt(TilesMoved, actionRt, HasMoved, HasActed);
-		// Reset turn state
 		HasMoved = false;
 		HasActed = false;
 		TilesMoved = 0;
 	}
 
-	/// <summary>Tick RT down by amount.</summary>
-	public void TickRt(int amount)
+	/// <summary>Apply per-turn regen (called at start of this unit's turn).</summary>
+	public void ApplyRegen()
 	{
-		CurrentRt = Math.Max(0, CurrentRt - amount);
+		CurrentHp      = Math.Min(CurrentHp + HpRegen, MaxHp);
+		CurrentStamina = Math.Min(CurrentStamina + StaminaRegen, MaxStamina);
+		CurrentAether  = Math.Min(CurrentAether + AetherRegen, MaxAether);
 	}
 
+	/// <summary>Deduct resource cost for an ability.</summary>
+	public void SpendResource(AbilityInfo ability)
+	{
+		switch (ability.ResourceType)
+		{
+			case ResourceType.Stamina:
+				CurrentStamina = Math.Max(0, CurrentStamina - ability.StaminaCost);
+				break;
+			case ResourceType.Aether:
+				CurrentAether = Math.Max(0, CurrentAether - ability.AetherCost);
+				break;
+			case ResourceType.Both:
+				CurrentStamina = Math.Max(0, CurrentStamina - ability.StaminaCost);
+				CurrentAether  = Math.Max(0, CurrentAether - ability.AetherCost);
+				break;
+		}
+	}
+
+	public void TickRt(int amount) => CurrentRt = Math.Max(0, CurrentRt - amount);
+
 	// ─── DERIVED HELPERS ─────────────────────────────────
-	public bool IsAlive => CurrentHp > 0;
-	public float HpPercent => MaxHp > 0 ? (float)CurrentHp / MaxHp : 0;
-	public float AetherPercent => MaxAether > 0 ? (float)CurrentAether / MaxAether : 0;
+	public bool IsAlive         => CurrentHp > 0;
+	public float HpPercent      => MaxHp > 0      ? (float)CurrentHp / MaxHp           : 0;
+	public float StaminaPercent => MaxStamina > 0  ? (float)CurrentStamina / MaxStamina : 0;
+	public float AetherPercent  => MaxAether > 0   ? (float)CurrentAether / MaxAether   : 0;
 
-	// ─── STATIC RT FORMULAS ──────────────────────────────
+	// ─── STATIC RT FORMULAS (v3.0) ───────────────────────
 
-	/// <summary>Calculate base WT from stats + equipment weight.</summary>
-	public static int CalcBaseWt(int agi, int spd, int equipWeight)
-		=> Math.Clamp(125 - agi - spd / 2 + equipWeight, 60, 180);
+	/// <summary>WT = 125 - DEX - AGI/2 + EquipWeight, clamped 60-180.</summary>
+	public static int CalcBaseWt(int dex, int agi, int equipWeight)
+		=> Math.Clamp(125 - dex - agi / 2 + equipWeight, 60, 180);
 
-	/// <summary>Calculate per-tile movement RT cost from speed.</summary>
-	public static int CalcMoveRtPerTile(int spd)
-		=> Math.Clamp(8 - spd / 5, 3, 8);
+	/// <summary>Move RT per tile: 8 - AGI/5, clamped 3-8.</summary>
+	public static int CalcMoveRtPerTile(int agi)
+		=> Math.Clamp(8 - agi / 5, 3, 8);
 
 	// ─── FACTORY ─────────────────────────────────────────
 
@@ -122,33 +124,33 @@ public class BattleUnit
 		var unit = new BattleUnit
 		{
 			CharacterId = Core.GameManager.Instance?.ActiveCharacterId ?? "",
-			Name = p.CharacterName,
-			Team = team,
-			GridPosition = spawnPos,
+			Name = p.CharacterName, Team = team, GridPosition = spawnPos,
 			Facing = team == UnitTeam.TeamA ? Facing.North : Facing.South,
 
-			Strength = p.Strength, Dexterity = p.Dexterity, Agility = p.Agility,
-			Vitality = p.Vitality, Mind = p.Mind, EtherControl = p.EtherControl,
+			Strength = p.Strength, Vitality = p.Vitality, Dexterity = p.Dexterity,
+			Agility = p.Agility, EtherControl = p.EtherControl, Mind = p.Mind,
 
-			MaxHp = p.MaxHp, MaxAether = p.MaxAether,
-			CurrentHp = p.MaxHp, CurrentAether = p.MaxAether,
+			MaxHp = p.MaxHp, MaxStamina = p.MaxStamina, MaxAether = p.MaxAether,
+			CurrentHp = p.MaxHp, CurrentStamina = p.MaxStamina, CurrentAether = p.MaxAether,
+
+			HpRegen = p.HpRegen, StaminaRegen = p.StaminaRegen, AetherRegen = p.AetherRegen,
 
 			Atk = p.Atk, Def = p.Def, Eatk = p.Eatk, Edef = p.Edef,
 			Avd = p.Avd, Acc = p.Acc, CritPercent = p.CritPercent,
+			HealPower = p.HealPower, StatusResist = p.StatusResist,
 			Move = p.Move, Jump = p.Jump,
 
-			EquipWeight = equipWeight,
-			CurrentRt = 0
+			EquipWeight = equipWeight, CurrentRt = 0
 		};
-		unit.BaseWt = CalcBaseWt(p.Agility, p.Agility, equipWeight);
+		unit.BaseWt = CalcBaseWt(p.Dexterity, p.Agility, equipWeight);
 		unit.MoveRtPerTile = CalcMoveRtPerTile(p.Agility);
 		return unit;
 	}
 
 	public static BattleUnit CreateDummy(string name, UnitTeam team, Vector2I pos, int statLevel = 5, int equipWeight = 10)
 	{
-		int str = statLevel, spd = statLevel, agi = statLevel;
-		int end = statLevel, sta = statLevel, etc = statLevel;
+		int str = statLevel, vit = statLevel, dex = statLevel;
+		int agi = statLevel, etc = statLevel, mnd = statLevel;
 
 		var unit = new BattleUnit
 		{
@@ -156,54 +158,54 @@ public class BattleUnit
 			Name = name, Team = team, GridPosition = pos,
 			Facing = team == UnitTeam.TeamA ? Facing.North : Facing.South,
 
-			Strength = str, Dexterity = spd, Agility = agi,
-			Vitality = end, Mind = sta, EtherControl = etc,
+			Strength = str, Vitality = vit, Dexterity = dex,
+			Agility = agi, EtherControl = etc, Mind = mnd,
 
-			MaxHp = 200 + end * 15 + sta * 8,
-			MaxAether = 100 + etc * 20 + sta * 5,
-			CurrentHp = 200 + end * 15 + sta * 8,
-			CurrentAether = 100 + etc * 20 + sta * 5,
+			MaxHp      = 200 + vit * 15 + mnd * 8,
+			MaxStamina = 100 + str * 12 + vit * 8,
+			MaxAether  = 100 + etc * 20 + mnd * 5,
 
-			Atk = (int)(str * 2.5f + spd * 0.5f),
-			Def = (int)(end * 2.0f + sta * 0.5f),
-			Eatk = (int)(etc * 2.5f + agi * 0.3f),
-			Edef = etc + end,
-			Avd = (int)(agi * 1.5f + spd * 1.0f),
-			Acc = (int)(agi * 1.0f + spd * 0.5f),
-			CritPercent = spd * 0.3f + agi * 0.2f,
-			Move = 4 + spd / 15,
-			Jump = 2 + str / 20,
+			HpRegen      = (int)(mnd * 0.4f),
+			StaminaRegen = (int)(vit * 0.3f),
+			AetherRegen  = (int)(etc * 0.8f),
 
-			EquipWeight = equipWeight,
-			CurrentRt = 0
+			Atk  = (int)(str * 2.5f),
+			Def  = (int)(vit * 2.0f + mnd * 0.5f),
+			Eatk = (int)(etc * 2.5f + mnd * 0.3f),
+			Edef = (int)(etc * 1.0f + vit * 0.8f + mnd * 0.5f),
+			Avd  = (int)(agi * 1.5f + dex * 0.5f),
+			Acc  = (int)(agi * 1.2f + dex * 0.3f),
+			CritPercent  = dex * 0.4f + agi * 0.1f,
+			HealPower    = (int)(mnd * 1.5f + etc * 0.5f),
+			StatusResist = (int)(mnd * 0.5f + vit * 0.2f),
+			Move = Math.Min(3 + agi / 12, 7),
+			Jump = Math.Min(2 + str / 20, 5),
+
+			EquipWeight = equipWeight, CurrentRt = 0
 		};
-		unit.BaseWt = CalcBaseWt(agi, spd, equipWeight);
-		unit.MoveRtPerTile = CalcMoveRtPerTile(spd);
+		unit.CurrentHp      = unit.MaxHp;
+		unit.CurrentStamina = unit.MaxStamina;
+		unit.CurrentAether  = unit.MaxAether;
+		unit.BaseWt = CalcBaseWt(dex, agi, equipWeight);
+		unit.MoveRtPerTile = CalcMoveRtPerTile(agi);
 		return unit;
 	}
 }
 
-/// <summary>
-/// Action RT costs — each weapon/spell/ability defines its own RT.
-/// These are reference constants; actual abilities will be data-driven.
-/// </summary>
+/// <summary>Action RT costs — reference constants.</summary>
 public static class ActionRt
 {
-	// ─── BASIC ACTIONS ───────────────────────────────────
-	public const int Wait     = 0;   // did nothing — WT at 50%
-	public const int Defend   = 5;   // block stance, minimal RT
+	public const int Wait     = 0;
+	public const int Defend   = 5;
 
-	// ─── PHYSICAL ATTACKS (weapon-dependent in future) ───
-	public const int LightAttack  = 15;  // dagger, fist
-	public const int MediumAttack = 25;  // sword, spear
-	public const int HeavyAttack  = 35;  // 2H axe, greatsword
+	public const int LightAttack  = 15;
+	public const int MediumAttack = 25;
+	public const int HeavyAttack  = 35;
 
-	// ─── ETHER ABILITIES ─────────────────────────────────
-	public const int MinorAbility  = 15;  // heal, buff
-	public const int MediumAbility = 25;  // fireball, debuff
-	public const int MajorAbility  = 35;  // large AoE
-	public const int FinishingMove = 50;  // ultimate, requires charge
+	public const int MinorAbility  = 15;
+	public const int MediumAbility = 25;
+	public const int MajorAbility  = 35;
+	public const int FinishingMove = 50;
 
-	// ─── ITEMS ───────────────────────────────────────────
 	public const int UseItem = 20;
 }

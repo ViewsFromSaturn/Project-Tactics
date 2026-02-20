@@ -425,6 +425,10 @@ public partial class BattleHUD : CanvasLayer
 		float epPct = unit.MaxAether > 0 ? (float)unit.CurrentAether / unit.MaxAether : 0;
 		AddTorBar(infoVb, epPct, false, 5);
 
+		// Stamina bar — orange tint, same size as EP
+		float staPct = unit.MaxStamina > 0 ? (float)unit.CurrentStamina / unit.MaxStamina : 0;
+		AddTorBar(infoVb, staPct, false, 5, new Color(0.85f, 0.55f, 0.15f)); // orange
+
 		// Stars row with class icon
 		var starsRow = new HBoxContainer(); starsRow.AddThemeConstantOverride("separation", 4);
 		var classIcon = new Label();
@@ -487,7 +491,7 @@ public partial class BattleHUD : CanvasLayer
 		hbox.AddChild(portrait);
 	}
 
-	void AddTorBar(VBoxContainer par, float pct, bool hp, int barHeight)
+	void AddTorBar(VBoxContainer par, float pct, bool hp, int barHeight, Color? colorOverride = null)
 	{
 		var bg = new Panel();
 		bg.CustomMinimumSize = new Vector2(0, barHeight);
@@ -502,7 +506,7 @@ public partial class BattleHUD : CanvasLayer
 		fill.AnchorTop = 0; fill.AnchorBottom = 1;
 		fill.OffsetLeft = 1; fill.OffsetRight = -1; fill.OffsetTop = 1; fill.OffsetBottom = -1;
 		var fs = new StyleBoxFlat();
-		fs.BgColor = hp ? (pct > 0.5f ? ColHpFull : pct > 0.25f ? ColHpMid : ColHpLow) : ColEther;
+		fs.BgColor = colorOverride ?? (hp ? (pct > 0.5f ? ColHpFull : pct > 0.25f ? ColHpMid : ColHpLow) : ColEther);
 		fs.SetCornerRadiusAll(2);
 		fill.AddThemeStyleboxOverride("panel", fs);
 		fill.MouseFilter = Control.MouseFilterEnum.Ignore;
@@ -811,6 +815,7 @@ public partial class BattleHUD : CanvasLayer
 
 		var bars = new VBoxContainer(); bars.AddThemeConstantOverride("separation", 2); pvb.AddChild(bars);
 		AddInspectBarRow(bars, "HP", u.CurrentHp, u.MaxHp, true);
+		AddInspectBarRow(bars, "STA", u.CurrentStamina, u.MaxStamina, false);
 		AddInspectBarRow(bars, "AE", u.CurrentAether, u.MaxAether, false);
 
 		// ─── STATS ───
@@ -952,7 +957,7 @@ public partial class BattleHUD : CanvasLayer
 		_cmdPanel.Visible = true;
 		SetEnabled("Move", !unit.HasMoved);
 		SetEnabled("Attack", !unit.HasActed);
-		SetEnabled("Ability", !unit.HasActed && unit.CurrentAether > 0);
+		SetEnabled("Ability", !unit.HasActed && (unit.CurrentAether > 0 || unit.CurrentStamina > 0));
 		SetEnabled("Item", !unit.HasActed);
 		SetEnabled("Defend", !unit.HasActed);
 		SetEnabled("Flee", true);

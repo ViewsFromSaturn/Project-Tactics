@@ -13,6 +13,31 @@ characters_bp = Blueprint("characters", __name__)
 
 MAX_CHARACTERS = 3
 VALID_CITIES = ["Lumere", "Praeven", "Caldris"]
+VALID_RACES = [
+    "Human", "Gorath", "Sythari", "Fenric", "Valdren",
+    "Kaerath", "Nexari", "Ashborn", "Delvari", "Verskai"
+]
+
+# City → allowed races
+CITY_RACES = {
+    "Lumere":  ["Human", "Valdren", "Kaerath", "Delvari", "Ashborn", "Nexari"],
+    "Praeven": ["Human", "Sythari", "Kaerath", "Delvari", "Ashborn", "Nexari"],
+    "Caldris": ["Human", "Gorath", "Fenric", "Verskai", "Kaerath", "Delvari", "Ashborn", "Nexari"],
+}
+
+# Race → stat modifiers (mirrors RaceData.cs)
+RACE_MODS = {
+    "Human":   {"hp": 1.05, "sta": 1.05, "ae": 1.05, "atk": 1.05, "eatk": 1.05, "avd": 1.05, "regen": 1.05},
+    "Gorath":  {"hp": 1.25, "sta": 1.25, "ae": 0.90, "atk": 1.20, "eatk": 0.90, "avd": 0.90, "regen": 1.00},
+    "Sythari": {"hp": 1.00, "sta": 0.90, "ae": 1.10, "atk": 1.00, "eatk": 1.15, "avd": 1.10, "regen": 1.00},
+    "Fenric":  {"hp": 1.10, "sta": 1.15, "ae": 0.95, "atk": 1.15, "eatk": 0.95, "avd": 1.10, "regen": 1.00},
+    "Valdren": {"hp": 1.15, "sta": 1.10, "ae": 1.20, "atk": 1.00, "eatk": 1.00, "avd": 1.00, "regen": 1.25},
+    "Kaerath": {"hp": 1.00, "sta": 1.15, "ae": 1.05, "atk": 1.10, "eatk": 1.00, "avd": 1.15, "regen": 1.10},
+    "Nexari":  {"hp": 1.05, "sta": 0.95, "ae": 1.15, "atk": 1.00, "eatk": 1.05, "avd": 1.05, "regen": 1.15},
+    "Ashborn": {"hp": 1.10, "sta": 1.05, "ae": 1.15, "atk": 1.00, "eatk": 1.15, "avd": 0.95, "regen": 1.00},
+    "Delvari": {"hp": 1.00, "sta": 0.95, "ae": 1.10, "atk": 1.00, "eatk": 1.10, "avd": 1.05, "regen": 1.15},
+    "Verskai": {"hp": 1.05, "sta": 1.10, "ae": 1.10, "atk": 1.10, "eatk": 1.05, "avd": 1.10, "regen": 1.00},
+}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -45,6 +70,7 @@ def create_character():
 
     name = data.get("name", "").strip()
     city = data.get("city", "").strip()
+    race = data.get("race", "").strip()
     bio = data.get("bio", "").strip()
     slot = data.get("slot", 1)
 
@@ -55,6 +81,10 @@ def create_character():
         errors.append("Name must be 2-30 characters.")
     if city not in VALID_CITIES:
         errors.append(f"City must be one of: {', '.join(VALID_CITIES)}")
+    if race not in VALID_RACES:
+        errors.append(f"Race must be one of: {', '.join(VALID_RACES)}")
+    elif city in CITY_RACES and race not in CITY_RACES[city]:
+        errors.append(f"{race} cannot start in {city}.")
     if slot not in [1, 2, 3]:
         errors.append("Slot must be 1, 2, or 3.")
     if len(bio) > 500:
@@ -80,13 +110,15 @@ def create_character():
         return jsonify({"error": "Character name already taken."}), 409
 
     # ─── CREATE ──────────────────────────────────────────
+    mods = RACE_MODS.get(race, RACE_MODS["Human"])
+
     character = Character(
         account_id=g.current_account.id,
         slot=slot,
         name=name,
         city=city,
         bio=bio,
-        race="Human",
+        race=race,
         allegiance="None",
         rp_rank="Aspirant",
         strength=1,
@@ -96,13 +128,13 @@ def create_character():
         mind=1,
         ether_control=1,
         training_points_bank=0,
-        race_hp_mod=1.0,
-        race_stamina_mod=1.0,
-        race_aether_mod=1.0,
-        race_atk_mod=1.0,
-        race_eatk_mod=1.0,
-        race_avd_mod=1.0,
-        race_regen_mod=1.0,
+        race_hp_mod=mods["hp"],
+        race_stamina_mod=mods["sta"],
+        race_aether_mod=mods["ae"],
+        race_atk_mod=mods["atk"],
+        race_eatk_mod=mods["eatk"],
+        race_avd_mod=mods["avd"],
+        race_regen_mod=mods["regen"],
     )
 
     # Initialize HP/Ether to max

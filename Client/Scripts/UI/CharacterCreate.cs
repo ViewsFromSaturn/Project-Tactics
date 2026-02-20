@@ -1,18 +1,21 @@
 using Godot;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 namespace ProjectTactics.UI;
 
 /// <summary>
-/// Character Creation Wizard — 3 steps: Name → City → Bio.
-/// Visual style matches HUD v4 mockup.
+/// Character Creation Wizard — 4 steps: Name → City → Race → Bio.
+/// Race list filtered by selected city.
 /// </summary>
 public partial class CharacterCreate : Control
 {
 	private int _step = 1;
 	private string _charName = "";
 	private string _city = "";
+	private string _race = "";
 	private string _bio = "";
 
 	private VBoxContainer _stepContainer;
@@ -29,7 +32,12 @@ public partial class CharacterCreate : Control
 	private PanelContainer _praevenPanel;
 	private PanelContainer _caldrisPanel;
 
-	// Step 3
+	// Step 3 (Race)
+	private string _selectedRace = "";
+	private readonly Dictionary<string, PanelContainer> _racePanels = new();
+	private Label _raceDetailLabel;
+
+	// Step 4
 	private TextEdit _bioInput;
 	private Label _charCountLabel;
 
@@ -57,40 +65,43 @@ public partial class CharacterCreate : Control
 		_titleLabel.AddThemeColorOverride("font_color", UITheme.AccentOrange);
 		mainVbox.AddChild(_titleLabel);
 
-		// Step indicator
-		_stepLabel = UITheme.CreateDim("Step 1 of 3", 12);
+		_stepLabel = UITheme.CreateDim("Step 1 of 4", 12);
 		_stepLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		mainVbox.AddChild(_stepLabel);
 
 		mainVbox.AddChild(UITheme.CreateSpacer(4));
 
-		// Error label
 		_errorLabel = UITheme.CreateBody("", 13, UITheme.Error);
 		_errorLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		mainVbox.AddChild(_errorLabel);
 
-		// Step content (centered)
 		var center = new CenterContainer();
 		center.SizeFlagsVertical = SizeFlags.ExpandFill;
 		mainVbox.AddChild(center);
 
-		_stepContainer = new VBoxContainer();
-		_stepContainer.CustomMinimumSize = new Vector2(500, 300);
-		_stepContainer.AddThemeConstantOverride("separation", 10);
-		center.AddChild(_stepContainer);
+		var scroll = new ScrollContainer();
+		scroll.CustomMinimumSize = new Vector2(540, 500);
+		scroll.SizeFlagsVertical = SizeFlags.ExpandFill;
+		scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+		center.AddChild(scroll);
 
-		// Version
+		_stepContainer = new VBoxContainer();
+		_stepContainer.CustomMinimumSize = new Vector2(520, 0);
+		_stepContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		_stepContainer.AddThemeConstantOverride("separation", 10);
+		scroll.AddChild(_stepContainer);
+
 		AddChild(UITheme.CreateVersionLabel());
 	}
 
-	// ═════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════════
 	//  STEP MANAGEMENT
-	// ═════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════════
 
 	private void ShowStep(int step)
 	{
 		_step = step;
-		_stepLabel.Text = $"Step {step} of 3";
+		_stepLabel.Text = $"Step {step} of 4";
 		_errorLabel.Text = "";
 
 		foreach (var child in _stepContainer.GetChildren())
@@ -101,10 +112,11 @@ public partial class CharacterCreate : Control
 			case 1: BuildStep1(); break;
 			case 2: BuildStep2(); break;
 			case 3: BuildStep3(); break;
+			case 4: BuildStep4(); break;
 		}
 	}
 
-	// ─── STEP 1: NAME ────────────────────────────────────────
+	// ─── STEP 1: NAME ────────────────────────────────────
 
 	private void BuildStep1()
 	{
@@ -155,7 +167,7 @@ public partial class CharacterCreate : Control
 		_nameInput.CallDeferred("grab_focus");
 	}
 
-	// ─── STEP 2: CITY ─────────────────────────────────────
+	// ─── STEP 2: CITY ────────────────────────────────────
 
 	private void BuildStep2()
 	{
@@ -168,7 +180,6 @@ public partial class CharacterCreate : Control
 
 		_stepContainer.AddChild(UITheme.CreateSpacer(8));
 
-		// City cards
 		_lumerePanel = CreateCityCard("Lumere", "The City of Light — Capital of the Empire");
 		_stepContainer.AddChild(_lumerePanel);
 
@@ -178,7 +189,6 @@ public partial class CharacterCreate : Control
 		_caldrisPanel = CreateCityCard("Caldris", "The Free City — Outside the Empire");
 		_stepContainer.AddChild(_caldrisPanel);
 
-		// Restore selection
 		if (_selectedCity == "Lumere") UITheme.SetPanelSelected(_lumerePanel, true);
 		else if (_selectedCity == "Praeven") UITheme.SetPanelSelected(_praevenPanel, true);
 		else if (_selectedCity == "Caldris") UITheme.SetPanelSelected(_caldrisPanel, true);
@@ -204,6 +214,13 @@ public partial class CharacterCreate : Control
 				return;
 			}
 			_city = _selectedCity;
+			// Reset race if city changed and old race isn't valid
+			if (!string.IsNullOrEmpty(_selectedRace))
+			{
+				var validRaces = Core.RaceData.GetRacesForCity(_city);
+				if (!validRaces.Contains(_selectedRace))
+					_selectedRace = "";
+			}
 			ShowStep(3);
 		};
 		btnRow.AddChild(nextBtn);
@@ -225,13 +242,10 @@ public partial class CharacterCreate : Control
 		var subLabel = UITheme.CreateDim(subtitle, 12);
 		vbox.AddChild(subLabel);
 
-		// Make the whole panel clickable via gui_input
 		panel.GuiInput += (InputEvent ev) =>
 		{
 			if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
-			{
 				SelectCity(name);
-			}
 		};
 		panel.MouseDefaultCursorShape = CursorShape.PointingHand;
 
@@ -246,9 +260,149 @@ public partial class CharacterCreate : Control
 		UITheme.SetPanelSelected(_caldrisPanel, city == "Caldris");
 	}
 
-	// ─── STEP 3: BIO + CREATE ────────────────────────────────
+	// ─── STEP 3: RACE ────────────────────────────────────
 
 	private void BuildStep3()
+	{
+		var header = UITheme.CreateTitle("Choose Your Race", 20);
+		_stepContainer.AddChild(header);
+
+		var desc = UITheme.CreateDim($"Races available in {_city}. Your race is permanent.", 13);
+		desc.HorizontalAlignment = HorizontalAlignment.Center;
+		_stepContainer.AddChild(desc);
+
+		_stepContainer.AddChild(UITheme.CreateSpacer(6));
+
+		// Race cards — filtered by city
+		_racePanels.Clear();
+		var availableRaces = Core.RaceData.GetRacesForCity(_city).ToList();
+
+		foreach (var raceName in availableRaces)
+		{
+			var race = Core.RaceData.GetRace(raceName);
+			var panel = CreateRaceCard(race);
+			_racePanels[raceName] = panel;
+			_stepContainer.AddChild(panel);
+
+			if (_selectedRace == raceName)
+				UITheme.SetPanelSelected(panel, true);
+		}
+
+		// Detail panel — shows full info for selected race
+		_stepContainer.AddChild(UITheme.CreateSpacer(4));
+		_raceDetailLabel = UITheme.CreateBody("Select a race to see details.", 12, UITheme.TextDim);
+		_raceDetailLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		_stepContainer.AddChild(_raceDetailLabel);
+
+		if (!string.IsNullOrEmpty(_selectedRace))
+			UpdateRaceDetail(_selectedRace);
+
+		_stepContainer.AddChild(UITheme.CreateSpacer(8));
+
+		var btnRow = new HBoxContainer();
+		btnRow.Alignment = BoxContainer.AlignmentMode.Center;
+		btnRow.AddThemeConstantOverride("separation", 16);
+		_stepContainer.AddChild(btnRow);
+
+		var backBtn = UITheme.CreateGhostButton("← Back", 13);
+		backBtn.Pressed += () => ShowStep(2);
+		btnRow.AddChild(backBtn);
+
+		var nextBtn = UITheme.CreatePrimaryButton("NEXT →", 14);
+		nextBtn.CustomMinimumSize = new Vector2(140, 42);
+		nextBtn.Pressed += () =>
+		{
+			if (string.IsNullOrEmpty(_selectedRace))
+			{
+				_errorLabel.Text = "Please select a race.";
+				return;
+			}
+			_race = _selectedRace;
+			ShowStep(4);
+		};
+		btnRow.AddChild(nextBtn);
+	}
+
+	private PanelContainer CreateRaceCard(Core.RaceDefinition race)
+	{
+		var panel = UITheme.CreatePanel();
+		panel.CustomMinimumSize = new Vector2(480, 0);
+
+		var hbox = new HBoxContainer();
+		hbox.AddThemeConstantOverride("separation", 12);
+		panel.AddChild(hbox);
+
+		// Left: name + tier badge
+		var leftVbox = new VBoxContainer();
+		leftVbox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		leftVbox.AddThemeConstantOverride("separation", 2);
+		hbox.AddChild(leftVbox);
+
+		var nameLabel = UITheme.CreateTitle(race.Name, 15);
+		nameLabel.HorizontalAlignment = HorizontalAlignment.Left;
+		leftVbox.AddChild(nameLabel);
+
+		var descLabel = UITheme.CreateDim(race.Description, 11);
+		descLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		leftVbox.AddChild(descLabel);
+
+		// Right: tier badge
+		var tierColor = race.Tier switch
+		{
+			Core.SocialTier.Noble  => new Color("c8a84e"),
+			Core.SocialTier.Common => new Color("8888aa"),
+			Core.SocialTier.Wild   => new Color("aa5533"),
+			_ => UITheme.TextDim
+		};
+		var tierLabel = UITheme.CreateBody(race.Tier.ToString().ToUpper(), 10, tierColor);
+		hbox.AddChild(tierLabel);
+
+		panel.GuiInput += (InputEvent ev) =>
+		{
+			if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+				SelectRace(race.Name);
+		};
+		panel.MouseDefaultCursorShape = CursorShape.PointingHand;
+
+		return panel;
+	}
+
+	private void SelectRace(string raceName)
+	{
+		_selectedRace = raceName;
+		foreach (var (name, panel) in _racePanels)
+			UITheme.SetPanelSelected(panel, name == raceName);
+		UpdateRaceDetail(raceName);
+	}
+
+	private void UpdateRaceDetail(string raceName)
+	{
+		var race = Core.RaceData.GetRace(raceName);
+
+		string resists = "";
+		string weaknesses = "";
+		if (race.ElementResists != null)
+		{
+			foreach (var (element, value) in race.ElementResists)
+			{
+				string pct = $"{Math.Abs(value) * 100:0}%";
+				if (value > 0) resists += $"  +{pct} {element} resist\n";
+				else           weaknesses += $"  -{pct} {element} weakness\n";
+			}
+		}
+
+		string detail = $"{race.PassiveDescription}\n\n";
+		if (!string.IsNullOrEmpty(resists))
+			detail += $"Resists:\n{resists}";
+		if (!string.IsNullOrEmpty(weaknesses))
+			detail += $"Weaknesses:\n{weaknesses}";
+
+		_raceDetailLabel.Text = detail.TrimEnd();
+	}
+
+	// ─── STEP 4: BIO + CREATE ────────────────────────────
+
+	private void BuildStep4()
 	{
 		var header = UITheme.CreateTitle("Character Background", 20);
 		_stepContainer.AddChild(header);
@@ -287,17 +441,11 @@ public partial class CharacterCreate : Control
 		summaryPanel.AddChild(summaryVbox);
 
 		summaryVbox.AddChild(UITheme.CreateDim("SUMMARY", 10));
+		summaryVbox.AddChild(UITheme.CreateBody($"Name: {_charName}", 13, UITheme.TextBright));
+		summaryVbox.AddChild(UITheme.CreateBody($"City: {_city}", 13, UITheme.Text));
+		summaryVbox.AddChild(UITheme.CreateBody($"Race: {_race}", 13, UITheme.Text));
+		summaryVbox.AddChild(UITheme.CreateBody("Starting Rank: Aspirant", 13, UITheme.TextDim));
 
-		var summaryName = UITheme.CreateBody($"Name: {_charName}", 13, UITheme.TextBright);
-		summaryVbox.AddChild(summaryName);
-
-		var summaryCity = UITheme.CreateBody($"City: {_city}", 13, UITheme.Text);
-		summaryVbox.AddChild(summaryCity);
-
-		var summaryRank = UITheme.CreateBody("Starting Rank: Aspirant", 13, UITheme.TextDim);
-		summaryVbox.AddChild(summaryRank);
-
-		// Buttons
 		_stepContainer.AddChild(UITheme.CreateSpacer(6));
 
 		var btnRow = new HBoxContainer();
@@ -309,7 +457,7 @@ public partial class CharacterCreate : Control
 		backBtn.Pressed += () =>
 		{
 			_bio = _bioInput.Text;
-			ShowStep(2);
+			ShowStep(3);
 		};
 		btnRow.AddChild(backBtn);
 
@@ -319,9 +467,9 @@ public partial class CharacterCreate : Control
 		btnRow.AddChild(createBtn);
 	}
 
-	// ═════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════════
 	//  CREATE CHARACTER (API)
-	// ═════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════════
 
 	private async void OnCreatePressed(Button btn)
 	{
@@ -346,11 +494,11 @@ public partial class CharacterCreate : Control
 		if (gm != null && int.TryParse(gm.PendingSlot, out int parsed))
 			slot = parsed;
 
-		var resp = await api.CreateCharacter(_charName, _city, _bio, slot);
+		var resp = await api.CreateCharacter(_charName, _city, _race, _bio, slot);
 
 		if (resp.Success)
 		{
-			GD.Print($"[CharacterCreate] Created {_charName} in slot {slot}");
+			GD.Print($"[CharacterCreate] Created {_charName} ({_race}) in slot {slot}");
 
 			using var doc = JsonDocument.Parse(resp.Body);
 			var c = doc.RootElement.GetProperty("character");
@@ -373,6 +521,9 @@ public partial class CharacterCreate : Control
 				CurrentHp = c.GetProperty("current_hp").GetInt32(),
 				CurrentAether = c.GetProperty("current_aether").GetInt32(),
 			};
+
+			// Apply race passives
+			Core.RaceData.ApplyRacePassives(data);
 
 			string charId = c.GetProperty("id").GetString();
 			gm.LoadCharacter(data, charId);

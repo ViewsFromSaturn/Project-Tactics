@@ -129,48 +129,58 @@ public partial class PlayerData : Resource
 	public int AetherRegen  => (int)(EtherControl * 0.8f * RaceRegenModifier);
 
 	// ═══════════════════════════════════════════════════════════
-	//  DERIVED COMBAT STATS
+	//  DERIVED COMBAT STATS (v3.0)
 	// ═══════════════════════════════════════════════════════════
 
-	// Physical ATK — weapon type determines which stats scale (handled by equipment)
-	// Base ATK is a baseline; weapon formulas in CombatData add stat-specific scaling
-	public int Atk  => (int)((Strength * 2.0f + Dexterity * 0.5f) * RaceAtkModifier);
-	public int Eatk => (int)((EtherControl * 2.5f + Mind * 0.5f) * RaceEatkModifier);
+	// Offense
+	public int Atk  => (int)(Strength * 2.5f * RaceAtkModifier);           // STR only
+	public int Eatk => (int)((EtherControl * 2.5f + Mind * 0.3f) * RaceEatkModifier);
+	public int CritPercent => (int)(Dexterity * 0.4f + Agility * 0.1f);    // DEX is crit king
+	public int HealPower   => (int)(Mind * 1.5f + EtherControl * 0.5f);
 
-	public int Def  => (int)(Vitality * 2.0f + Strength * 0.5f);
-	public int Edef => (int)(Mind * 1.5f + Vitality * 0.5f);
-
+	// Defense
+	public int Def  => (int)(Vitality * 2.0f + Mind * 0.5f);               // VIT primary, MND minor
+	public int Edef => (int)(EtherControl * 1.0f + Vitality * 0.8f + Mind * 0.5f); // split 3 stats
 	public int Avd  => (int)((Agility * 1.5f + Dexterity * 0.5f) * RaceAvdModifier);
-	public int Acc  => (int)(Dexterity * 1.2f + Agility * 0.3f);
+	public int Acc  => (int)(Agility * 1.2f + Dexterity * 0.3f);           // AGI primary accuracy
+	public int StatusResist => (int)(Mind * 0.5f + Vitality * 0.2f);
 
-	public int CritPercent => (int)(Dexterity * 0.3f + Agility * 0.2f);
-
-	public int Move => Math.Min(4 + (Agility / 15), 7);
+	// Utility
+	public int Move => Math.Min(3 + (Agility / 12), 7);                    // 3 + AGI/12
 	public int Jump => Math.Min(2 + (Strength / 20), 5);
 
-	// RT: floor 80, ceiling 150. AGI is primary speed stat for turn order.
-	public int BaseRt => Math.Clamp(100 - (Agility / 5), 80, 150);
+	// RT: DEX drives turn order (v3.0)
+	public int BaseRt => Math.Clamp(100 - (Dexterity / 5), 80, 150);
 
 	public int CalculateRt(int actionWeight) =>
 		Math.Clamp(BaseRt + actionWeight, 80, 150);
 
 	// ═══════════════════════════════════════════════════════════
-	//  DODGE / DAMAGE FORMULAS
+	//  DODGE / DAMAGE / RESIST FORMULAS (v3.0)
 	// ═══════════════════════════════════════════════════════════
 
-	public float CalcPhysicalDodge(int attackerDex, int terrainBonus = 0, int facingBonus = 0)
+	/// <summary>Physical dodge: AVD×0.4 + AGI×0.2 - AttackerACC×0.3 + terrain + facing. Cap 75%.</summary>
+	public float CalcPhysicalDodge(int attackerAcc, int terrainBonus = 0, int facingBonus = 0)
 	{
-		float dodge = (Avd * 0.4f) + (Agility * 0.2f) - (attackerDex * 0.3f)
+		float dodge = (Avd * 0.4f) + (Agility * 0.2f) - (attackerAcc * 0.3f)
 					  + terrainBonus + facingBonus;
 		return Math.Clamp(dodge, 0f, 75f);
 	}
 
-	public float CalcAetherDodge(int attackerEtc, int terrainBonus = 0, bool isAoe = false)
+	/// <summary>Ether dodge: AVD×0.3 + AGI×0.2 - AttackerACC×0.3 + terrain. AoE halved. Cap 60%.</summary>
+	public float CalcAetherDodge(int attackerAcc, int terrainBonus = 0, bool isAoe = false)
 	{
-		float dodge = (Avd * 0.3f) + (Mind * 0.15f) - (attackerEtc * 0.3f)
+		float dodge = (Avd * 0.3f) + (Agility * 0.2f) - (attackerAcc * 0.3f)
 					  + terrainBonus;
 		if (isAoe) dodge *= 0.5f;
 		return Math.Clamp(dodge, 0f, 60f);
+	}
+
+	/// <summary>Status resist: StatusResist×0.4 + MND×0.2 - AttackerETC×0.2. Cap 70%.</summary>
+	public float CalcStatusResist(int attackerEtc)
+	{
+		float resist = (StatusResist * 0.4f) + (Mind * 0.2f) - (attackerEtc * 0.2f);
+		return Math.Clamp(resist, 0f, 70f);
 	}
 
 	public int CalcPhysicalDamage(int attackerAtk, int skillModifier = 0)

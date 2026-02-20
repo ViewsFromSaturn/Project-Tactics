@@ -313,12 +313,13 @@ public partial class ApiClient : Node
 	}
 
 	/// <summary>Create a new character.</summary>
-	public async Task<ApiResponse> CreateCharacter(string name, string city, string bio, int slot)
+	public async Task<ApiResponse> CreateCharacter(string name, string city, string race, string bio, int slot)
 	{
 		return await RequestAsync("POST", "/characters/", new
 		{
 			name,
 			city,
+			race,
 			bio,
 			slot,
 		});

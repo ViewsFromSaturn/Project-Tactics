@@ -271,6 +271,10 @@ public partial class BattleManager : Node3D
 		_activeUnit.HasActed = false;
 		_activeUnit.TilesMoved = 0;
 		_turnStartPos = _activeUnit.GridPosition;
+
+		// v3.0: Apply per-turn regen at start of unit's turn
+		_activeUnit.ApplyRegen();
+
 		ShowCommandMenu();
 	}
 
@@ -401,9 +405,14 @@ public partial class BattleManager : Node3D
 		var abilities = AbilityInfo.GetTestAbilities();
 		if (index < 0 || index >= abilities.Count) return;
 		var ab = abilities[index];
+		if (!ab.CanAfford(_activeUnit.CurrentStamina, _activeUnit.CurrentAether))
+		{
+			CombatLog($"✗ {_activeUnit.Name} can't afford {ab.Name}! ({ab.CostString()})");
+			return;
+		}
 		_activeUnit.HasActed = true;
-		_activeUnit.CurrentAether = Mathf.Max(0, _activeUnit.CurrentAether - ab.EtherCost);
-		CombatLog($"✦ {_activeUnit.Name} uses {ab.Name}! (-{ab.EtherCost} EP)");
+		_activeUnit.SpendResource(ab);
+		CombatLog($"✦ {_activeUnit.Name} uses {ab.Name}! (-{ab.CostString()})");
 		EndTurnWithAction(ab.RtCost);
 	}
 
