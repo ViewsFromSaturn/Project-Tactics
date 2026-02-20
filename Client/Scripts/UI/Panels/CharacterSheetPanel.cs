@@ -116,11 +116,11 @@ public partial class CharacterSheetPanel : WindowPanel
 		_statsContent.AddChild(SecHeader("Training Stats"));
 		_statsContent.AddChild(Spacer(2));
 
-		_statsContent.AddChild(StatGridRow("Strength", p.Strength, "Speed", p.Speed));
+		_statsContent.AddChild(StatGridRow("Strength", p.Strength, "Vitality", p.Vitality));
 		_statsContent.AddChild(ThinSeparator());
-		_statsContent.AddChild(StatGridRow("Agility", p.Agility, "Endurance", p.Endurance));
+		_statsContent.AddChild(StatGridRow("Agility", p.Agility, "Dexterity", p.Dexterity));
 		_statsContent.AddChild(ThinSeparator());
-		_statsContent.AddChild(StatGridRow("Stamina", p.Stamina, "Ether", p.EtherControl));
+		_statsContent.AddChild(StatGridRow("Mind", p.Mind, "Aether", p.EtherControl));
 
 		// ═══ DERIVED STATS ═══
 		_statsContent.AddChild(Spacer(3));
@@ -210,8 +210,8 @@ public partial class CharacterSheetPanel : WindowPanel
 		_statsContent.AddChild(_derivedContainer);
 
 		_derivedContainer.AddChild(DerivedRow("HP", $"{p.CurrentHp} / {p.MaxHp}"));
-		_derivedContainer.AddChild(DerivedRow("Ether", $"{p.CurrentEther} / {p.MaxEther}"));
-		_derivedContainer.AddChild(DerivedRow("Ether Regen", $"{p.EtherRegen}/turn"));
+		_derivedContainer.AddChild(DerivedRow("Aether", $"{p.CurrentAether} / {p.MaxAether}"));
+		_derivedContainer.AddChild(DerivedRow("Aether Regen", $"{p.AetherRegen}/turn"));
 		_derivedContainer.AddChild(ThinSeparator());
 		_derivedContainer.AddChild(DerivedRow("ATK", $"{p.Atk}"));
 		_derivedContainer.AddChild(DerivedRow("DEF", $"{p.Def}"));

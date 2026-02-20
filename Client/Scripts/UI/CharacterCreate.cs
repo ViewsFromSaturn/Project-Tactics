@@ -364,14 +364,14 @@ public partial class CharacterCreate : Control
 				RpRank = c.GetProperty("rp_rank").GetString(),
 				Bio = c.GetProperty("bio").GetString(),
 				Strength = c.GetProperty("strength").GetInt32(),
-				Speed = c.GetProperty("speed").GetInt32(),
+				Vitality = c.GetProperty("vitality").GetInt32(),
 				Agility = c.GetProperty("agility").GetInt32(),
-				Endurance = c.GetProperty("endurance").GetInt32(),
-				Stamina = c.GetProperty("stamina").GetInt32(),
+				Dexterity = c.GetProperty("dexterity").GetInt32(),
+				Mind = c.GetProperty("mind").GetInt32(),
 				EtherControl = c.GetProperty("ether_control").GetInt32(),
-				DailyPointsRemaining = c.GetProperty("daily_points_remaining").GetInt32(),
+				TrainingPointsBank = c.GetProperty("training_points_bank").GetInt32(),
 				CurrentHp = c.GetProperty("current_hp").GetInt32(),
-				CurrentEther = c.GetProperty("current_ether").GetInt32(),
+				CurrentAether = c.GetProperty("current_aether").GetInt32(),
 			};
 
 			string charId = c.GetProperty("id").GetString();

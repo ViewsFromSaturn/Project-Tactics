@@ -66,7 +66,7 @@ public partial class TrainingPanel : WindowPanel
 		title.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 		headerRow.AddChild(title);
 
-		_tpBadge = UITheme.CreateNumbers($"{p.DailyPointsRemaining} TP", 12, UITheme.Accent);
+		_tpBadge = UITheme.CreateNumbers($"{p.TrainingPointsBank} TP", 12, UITheme.Accent);
 		headerRow.AddChild(_tpBadge);
 
 		_feedbackLabel = UITheme.CreateBody("", 10, UITheme.Accent);
@@ -77,10 +77,10 @@ public partial class TrainingPanel : WindowPanel
 
 		// ═══ STAT ROWS — compact single-line each ═══
 		AddStatRow("Strength", "STR", "strength", p.Strength, p);
-		AddStatRow("Speed", "SPD", "speed", p.Speed, p);
+		AddStatRow("Vitality", "VIT", "vitality", p.Vitality, p);
 		AddStatRow("Agility", "AGI", "agility", p.Agility, p);
-		AddStatRow("Endurance", "END", "endurance", p.Endurance, p);
-		AddStatRow("Stamina", "STA", "stamina", p.Stamina, p);
+		AddStatRow("Dexterity", "DEX", "dexterity", p.Dexterity, p);
+		AddStatRow("Mind", "MND", "mind", p.Mind, p);
 		AddStatRow("Ether Control", "ETH", "ether_control", p.EtherControl, p);
 
 		// ═══ SOFT CAP INFO ═══
@@ -178,7 +178,7 @@ public partial class TrainingPanel : WindowPanel
 		int gap = currentVal - GetLowestStat(p);
 		int cost = gap >= 20 ? 4 : gap >= 10 ? 2 : 1;
 
-		if (_pendingTpCost + cost > p.DailyPointsRemaining) return;
+		if (_pendingTpCost + cost > p.TrainingPointsBank) return;
 
 		_pendingPoints[statKey] = _pendingPoints.GetValueOrDefault(statKey, 0) + 1;
 		_pendingTpCost += cost;
@@ -188,7 +188,7 @@ public partial class TrainingPanel : WindowPanel
 
 		_applyBtn.Text = $"Apply Training ({_pendingTpCost} TP)";
 		_applyBtn.Disabled = false;
-		_tpBadge.Text = $"{p.DailyPointsRemaining - _pendingTpCost} TP";
+		_tpBadge.Text = $"{p.TrainingPointsBank - _pendingTpCost} TP";
 	}
 
 	private async void ExecuteTrain()
@@ -215,14 +215,14 @@ public partial class TrainingPanel : WindowPanel
 					var c = doc.RootElement.GetProperty("character");
 					var p = gm.ActiveCharacter;
 					p.Strength = c.GetProperty("strength").GetInt32();
-					p.Speed = c.GetProperty("speed").GetInt32();
+					p.Vitality = c.GetProperty("vitality").GetInt32();
 					p.Agility = c.GetProperty("agility").GetInt32();
-					p.Endurance = c.GetProperty("endurance").GetInt32();
-					p.Stamina = c.GetProperty("stamina").GetInt32();
+					p.Dexterity = c.GetProperty("dexterity").GetInt32();
+					p.Mind = c.GetProperty("mind").GetInt32();
 					p.EtherControl = c.GetProperty("ether_control").GetInt32();
-					p.DailyPointsRemaining = c.GetProperty("daily_points_remaining").GetInt32();
+					p.TrainingPointsBank = c.GetProperty("daily_points_remaining").GetInt32();
 					p.CurrentHp = c.GetProperty("current_hp").GetInt32();
-					p.CurrentEther = c.GetProperty("current_ether").GetInt32();
+					p.CurrentAether = c.GetProperty("current_ether").GetInt32();
 				}
 				else
 				{
@@ -247,19 +247,19 @@ public partial class TrainingPanel : WindowPanel
 	private int GetLowestStat(Core.PlayerData p)
 	{
 		int min = p.Strength;
-		if (p.Speed < min) min = p.Speed;
+		if (p.Vitality < min) min = p.Vitality;
 		if (p.Agility < min) min = p.Agility;
-		if (p.Endurance < min) min = p.Endurance;
-		if (p.Stamina < min) min = p.Stamina;
+		if (p.Dexterity < min) min = p.Dexterity;
+		if (p.Mind < min) min = p.Mind;
 		if (p.EtherControl < min) min = p.EtherControl;
 		return min;
 	}
 
 	private int GetStatValue(string statKey, Core.PlayerData p) => statKey switch
 	{
-		"strength" => p.Strength, "speed" => p.Speed,
-		"agility" => p.Agility, "endurance" => p.Endurance,
-		"stamina" => p.Stamina, "ether_control" => p.EtherControl,
+		"strength" => p.Strength, "vitality" => p.Vitality,
+		"agility" => p.Agility, "dexterity" => p.Dexterity,
+		"mind" => p.Mind, "ether_control" => p.EtherControl,
 		_ => 0
 	};
 }

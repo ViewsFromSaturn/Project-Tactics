@@ -520,18 +520,18 @@ public partial class OverworldHUD : Control
 
 		_nameLabel.Text = p.CharacterName;
 		_rankLabel.Text = p.RpRank ?? "";
-		_tpLabel.Text = $"{p.DailyPointsRemaining} TP";
+		_tpLabel.Text = $"{p.TrainingPointsBank} TP";
 
 		float hpPct = p.MaxHp > 0 ? (float)p.CurrentHp / p.MaxHp : 0;
 		_hpFill.AnchorRight = Math.Clamp(hpPct, 0f, 1f);
 		_hpValue.Text = $"{p.CurrentHp}/{p.MaxHp}";
 
-		int maxSta = (int)(p.Stamina * 10 + 50);
+		int maxSta = p.MaxStamina;
 		_staFill.AnchorRight = 1.0f;
 		_staValue.Text = $"{maxSta}/{maxSta}";
 
-		float ethPct = p.MaxEther > 0 ? (float)p.CurrentEther / p.MaxEther : 0;
+		float ethPct = p.MaxAether > 0 ? (float)p.CurrentAether / p.MaxAether : 0;
 		_ethFill.AnchorRight = Math.Clamp(ethPct, 0f, 1f);
-		_ethValue.Text = $"{p.CurrentEther}/{p.MaxEther}";
+		_ethValue.Text = $"{p.CurrentAether}/{p.MaxAether}";
 	}
 }

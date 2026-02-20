@@ -334,10 +334,12 @@ public partial class IsoBattleRenderer : Node3D
 
 	// ─── MOVE PREVIEW (purple confirm target + path) ─────
 	private readonly HashSet<Vector2I> _previewHighlights = new();
+	private Vector2I _previewTarget = new(-1, -1);
 
 	public void ShowMovePreview(Vector2I target, List<Vector2I> path)
 	{
 		ClearMovePreview();
+		_previewTarget = target;
 		// Highlight the path tiles in a dimmer purple
 		if (path != null)
 		{
@@ -355,8 +357,16 @@ public partial class IsoBattleRenderer : Node3D
 
 	public void ClearMovePreview()
 	{
-		foreach (var pos in _previewHighlights) RemoveTileOverlay(pos);
+		foreach (var pos in _previewHighlights)
+		{
+			// Restore blue move range if the tile was in move range, otherwise remove
+			if (_moveHighlights.Contains(pos))
+				SetTileOverlay(pos, ColMoveRange);
+			else
+				RemoveTileOverlay(pos);
+		}
 		_previewHighlights.Clear();
+		_previewTarget = new(-1, -1);
 	}
 
 	private void SetTileOverlay(Vector2I pos, Color color)
@@ -547,14 +557,20 @@ public partial class IsoBattleRenderer : Node3D
 			var gridPos = ScreenToGrid(mm.Position);
 			if (gridPos != _hoveredTile)
 			{
-				// Restore previous hovered tile
+				// Restore previous hovered tile — respect preview > move > attack priority
 				if (_grid.InBounds(_hoveredTile))
 				{
-					if (_moveHighlights.Contains(_hoveredTile))
+					if (_previewHighlights.Contains(_hoveredTile))
+					{
+						// Keep purple preview highlight — don't downgrade to blue
+						// Destination tile = bright purple, path tiles = dim purple
+						SetTileOverlay(_hoveredTile, _hoveredTile == _previewTarget ? ColMovePreview : new Color("8844cc60"));
+					}
+					else if (_moveHighlights.Contains(_hoveredTile))
 						SetTileOverlay(_hoveredTile, ColMoveRange);  // restore blue
 					else if (_attackHighlights.Contains(_hoveredTile))
 						SetTileOverlay(_hoveredTile, ColAttackRange);
-					else if (!_previewHighlights.Contains(_hoveredTile))
+					else
 						RemoveTileOverlay(_hoveredTile);
 				}
 
@@ -562,12 +578,16 @@ public partial class IsoBattleRenderer : Node3D
 
 				if (_grid.InBounds(gridPos))
 				{
-					// Purple hover for move-range tiles, red-ish for attack, default otherwise
-					if (_moveHighlights.Contains(gridPos))
-						SetTileOverlay(gridPos, ColMovePreview);
+					// Don't override existing preview highlights
+					if (_previewHighlights.Contains(gridPos))
+					{
+						// Keep preview intact, just emit hover
+					}
+					else if (_moveHighlights.Contains(gridPos))
+						SetTileOverlay(gridPos, ColMovePreview);   // purple hover on blue range
 					else if (_attackHighlights.Contains(gridPos))
 						SetTileOverlay(gridPos, new Color("ff6666bb"));
-					else if (!_previewHighlights.Contains(gridPos))
+					else
 						SetTileOverlay(gridPos, ColHover);
 
 					EmitSignal(SignalName.TileHovered, gridPos.X, gridPos.Y);

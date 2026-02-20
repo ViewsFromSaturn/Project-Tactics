@@ -438,7 +438,7 @@ public partial class ChatPanel : Control
 		AddTab("all", "All");
 		AddTab("ic", "IC");
 		AddTab("ooc", "OOC");
-		AddTab("cbt", "Cbt");
+		AddTab("cbt", "Combat");
 		AddTab("fac", "Fac");
 		AddTab("sys", "Sys");
 

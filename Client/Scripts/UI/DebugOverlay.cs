@@ -38,18 +38,18 @@ public partial class DebugOverlay : Control
 $@"═══ {p.CharacterName} ═══
 Race: {p.RaceName} | City: {p.City}
 Rank: {p.RpRank} | Char Lv: {p.CharacterLevel}
-Daily Pts: {p.DailyPointsRemaining}
+Daily Pts: {p.TrainingPointsBank}
 
 ── TRAINING STATS ──
-STR: {p.Strength}  SPD: {p.Speed}  AGI: {p.Agility}
-END: {p.Endurance}  STA: {p.Stamina}  ETC: {p.EtherControl}
+STR: {p.Strength}  VIT: {p.Vitality}  AGI: {p.Agility}
+DEX: {p.Dexterity}  MND: {p.Mind}  ETC: {p.EtherControl}
 
 ── DERIVED STATS ──
-HP:  {p.CurrentHp}/{p.MaxHp}   ETR: {p.CurrentEther}/{p.MaxEther}
+HP:  {p.CurrentHp}/{p.MaxHp}   AE: {p.CurrentAether}/{p.MaxAether}
 ATK: {p.Atk}  DEF: {p.Def}  EATK: {p.Eatk}  EDEF: {p.Edef}
 AVD: {p.Avd}  ACC: {p.Acc}  CRIT: {p.CritPercent}%
 MOVE: {p.Move}  JUMP: {p.Jump}  RT: {p.BaseRt}
-Regen: {p.EtherRegen}/turn
+Regen: {p.AetherRegen}/turn
 
 ── CONTROLS ──
 WASD/Arrows: Move | Shift: Run

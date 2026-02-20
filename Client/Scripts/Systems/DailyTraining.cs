@@ -106,7 +106,7 @@ public partial class DailyTraining : Node
 	/// </summary>
 	public bool AllocatePoint(Core.PlayerData data, string statName)
 	{
-		if (data.DailyPointsRemaining <= 0)
+		if (data.TrainingPointsBank <= 0)
 			return false;
 
 		int statValue = data.GetTrainingStat(statName);
@@ -135,7 +135,7 @@ public partial class DailyTraining : Node
 		}
 
 		// Always consume the daily point even if banked
-		data.DailyPointsRemaining--;
+		data.TrainingPointsBank--;
 
 		// Refresh derived stats after any change
 		data.RefreshDerivedStats();
@@ -173,12 +173,12 @@ public partial class DailyTraining : Node
 	{
 		string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
-		if (data.LastTrainingDate == today)
+		if (data.LastResetDate == today)
 			return false; // Already trained today
 
 		int points = GetDailyPointAllowance(data.CharacterLevel);
-		data.DailyPointsRemaining = points;
-		data.LastTrainingDate = today;
+		data.TrainingPointsBank = points;
+		data.LastResetDate = today;
 
 		EmitSignal(SignalName.DailyPointsReset, points);
 		return true;
@@ -194,7 +194,7 @@ public partial class DailyTraining : Node
 	/// </summary>
 	public void GrantBonusPoints(Core.PlayerData data, int amount)
 	{
-		data.DailyPointsRemaining += amount;
+		data.TrainingPointsBank += amount;
 		GD.Print($"[DailyTraining] Granted {amount} bonus points to {data.CharacterName}");
 	}
 
@@ -207,10 +207,10 @@ public partial class DailyTraining : Node
 		switch (statName.ToLower())
 		{
 			case "strength" or "str":       data.Strength += amount; break;
-			case "speed" or "spd":          data.Speed += amount; break;
+			case "vitality" or "vit":      data.Vitality += amount; break;
 			case "agility" or "agi":        data.Agility += amount; break;
-			case "endurance" or "end":      data.Endurance += amount; break;
-			case "stamina" or "sta":        data.Stamina += amount; break;
+			case "dexterity" or "dex":      data.Dexterity += amount; break;
+			case "mind" or "mnd":           data.Mind += amount; break;
 			case "ethercontrol" or "etc":   data.EtherControl += amount; break;
 		}
 	}

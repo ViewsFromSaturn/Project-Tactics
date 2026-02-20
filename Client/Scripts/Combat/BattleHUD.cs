@@ -422,7 +422,7 @@ public partial class BattleHUD : CanvasLayer
 		AddTorBar(infoVb, hpPct, true, 10);
 
 		// EP bar — thinner
-		float epPct = unit.MaxEther > 0 ? (float)unit.CurrentEther / unit.MaxEther : 0;
+		float epPct = unit.MaxAether > 0 ? (float)unit.CurrentAether / unit.MaxAether : 0;
 		AddTorBar(infoVb, epPct, false, 5);
 
 		// Stars row with class icon
@@ -529,42 +529,132 @@ public partial class BattleHUD : CanvasLayer
 
 	void BuildTurnOrderBar()
 	{
-		_turnOrderBg = MakePanel(BgPanel, BdDim);
+		// TO:R-style portrait strip — top center, horizontal cards
+		_turnOrderBg = new PanelContainer();
+		var bgStyle = new StyleBoxFlat();
+		bgStyle.BgColor = UITheme.IsDarkMode ? new Color(0.02f, 0.02f, 0.05f, 0.85f) : new Color(0f, 0f, 0f, 0.3f);
+		bgStyle.SetCornerRadiusAll(4);
+		bgStyle.SetContentMarginAll(4);
+		bgStyle.ContentMarginLeft = 8; bgStyle.ContentMarginRight = 8;
+		_turnOrderBg.AddThemeStyleboxOverride("panel", bgStyle);
+
 		_turnOrderBg.SetAnchorsPreset(Control.LayoutPreset.TopWide);
-		_turnOrderBg.OffsetLeft = 60; _turnOrderBg.OffsetRight = -60;
-		_turnOrderBg.OffsetTop = 8; _turnOrderBg.OffsetBottom = 52;
+		_turnOrderBg.OffsetLeft = 64; _turnOrderBg.OffsetRight = -64;
+		_turnOrderBg.OffsetTop = 6; _turnOrderBg.OffsetBottom = 72;
 		_root.AddChild(_turnOrderBg);
 
 		_turnOrderBar = new HBoxContainer();
-		_turnOrderBar.AddThemeConstantOverride("separation", 4);
+		_turnOrderBar.AddThemeConstantOverride("separation", 3);
 		_turnOrderBar.Alignment = BoxContainer.AlignmentMode.Center;
 		_turnOrderBg.AddChild(_turnOrderBar);
+
+		// L/R scroll indicators (visual only for now)
+		var lArrow = new Label();
+		lArrow.Text = "◀";
+		lArrow.AddThemeColorOverride("font_color", TxDark);
+		lArrow.AddThemeFontSizeOverride("font_size", 14);
+		lArrow.SetAnchorsPreset(Control.LayoutPreset.CenterLeft);
+		lArrow.Position = new Vector2(66, 26);
+		_root.AddChild(lArrow);
+
+		var rArrow = new Label();
+		rArrow.Text = "▶";
+		rArrow.AddThemeColorOverride("font_color", TxDark);
+		rArrow.AddThemeFontSizeOverride("font_size", 14);
+		rArrow.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
+		// We'll position this in the top area
+		rArrow.AnchorLeft = 1f; rArrow.AnchorRight = 1f;
+		rArrow.AnchorTop = 0f; rArrow.AnchorBottom = 0f;
+		rArrow.OffsetLeft = -78; rArrow.OffsetTop = 26;
+		_root.AddChild(rArrow);
 	}
 
 	public void UpdateTurnOrder(List<BattleUnit> ordered, BattleUnit active)
 	{
 		ClearChildren(_turnOrderBar);
-		int ct = Math.Min(ordered.Count, 10);
+		int ct = Math.Min(ordered.Count, 12);
 		for (int i = 0; i < ct; i++)
-			_turnOrderBar.AddChild(MakeTurnSlot(ordered[i], ordered[i] == active));
+			_turnOrderBar.AddChild(MakeTurnPortrait(ordered[i], ordered[i] == active, i));
 	}
 
-	PanelContainer MakeTurnSlot(BattleUnit u, bool active)
+	/// <summary>TO:R-style portrait card — square with blue border for active unit.</summary>
+	PanelContainer MakeTurnPortrait(BattleUnit u, bool active, int index)
 	{
-		var p = new PanelContainer();
-		var s = new StyleBoxFlat();
+		var card = new PanelContainer();
 		var tc = u.Team == UnitTeam.TeamA ? ColTeamA : ColTeamB;
-		s.BgColor = active ? new Color(tc, 0.15f) : (UITheme.IsDarkMode ? new Color(0.06f, 0.06f, 0.10f, 0.8f) : new Color(0.95f, 0.95f, 0.97f, 0.9f));
-		s.BorderColor = active ? tc : new Color(tc, 0.3f);
-		s.SetBorderWidthAll(active ? 2 : 1);
-		s.SetCornerRadiusAll(4); s.SetContentMarginAll(4);
-		p.AddThemeStyleboxOverride("panel", s);
-		p.CustomMinimumSize = new Vector2(60, 32);
-		var vb = new VBoxContainer(); vb.AddThemeConstantOverride("separation", 0);
-		p.AddChild(vb);
-		MakeLabel(vb, u.Name, active ? TxBright : TxDim, 10, HorizontalAlignment.Center);
-		MakeLabel(vb, $"RT:{u.CurrentRt}", TxDark, 9, HorizontalAlignment.Center);
-		return p;
+
+		float cardSize = active ? 56 : 48;
+		card.CustomMinimumSize = new Vector2(cardSize, 56);
+
+		var style = new StyleBoxFlat();
+		// Active unit: bright border, slightly raised. Others: dim
+		if (active)
+		{
+			style.BgColor = new Color(tc, 0.25f);
+			style.BorderColor = tc;
+			style.SetBorderWidthAll(2);
+		}
+		else
+		{
+			style.BgColor = UITheme.IsDarkMode
+				? new Color(0.05f, 0.05f, 0.10f, 0.85f)
+				: new Color(0.12f, 0.12f, 0.18f, 0.85f);
+			style.BorderColor = new Color(tc, 0.35f);
+			style.SetBorderWidthAll(1);
+		}
+		style.SetCornerRadiusAll(4);
+		style.SetContentMarginAll(2);
+		card.AddThemeStyleboxOverride("panel", style);
+
+		var vb = new VBoxContainer();
+		vb.AddThemeConstantOverride("separation", 1);
+		vb.Alignment = BoxContainer.AlignmentMode.Center;
+		card.AddChild(vb);
+
+		// Portrait placeholder — colored square representing the unit
+		var portrait = new Panel();
+		portrait.CustomMinimumSize = new Vector2(active ? 40 : 34, active ? 34 : 28);
+		portrait.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
+		var pStyle = new StyleBoxFlat();
+		pStyle.BgColor = new Color(tc, active ? 0.5f : 0.3f);
+		pStyle.SetCornerRadiusAll(3);
+		portrait.AddThemeStyleboxOverride("panel", pStyle);
+		vb.AddChild(portrait);
+
+		// Unit initial inside portrait
+		var initial = new Label();
+		initial.Text = u.Name.Length > 0 ? u.Name[..1].ToUpper() : "?";
+		initial.HorizontalAlignment = HorizontalAlignment.Center;
+		initial.VerticalAlignment = VerticalAlignment.Center;
+		initial.AddThemeColorOverride("font_color", active ? TxBright : TxPrimary);
+		initial.AddThemeFontSizeOverride("font_size", active ? 16 : 13);
+		initial.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		initial.MouseFilter = Control.MouseFilterEnum.Ignore;
+		portrait.AddChild(initial);
+
+		// Name label below portrait
+		var nameLabel = new Label();
+		nameLabel.Text = u.Name.Length > 6 ? u.Name[..5] + "." : u.Name;
+		nameLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		nameLabel.AddThemeColorOverride("font_color", active ? TxBright : TxDim);
+		nameLabel.AddThemeFontSizeOverride("font_size", active ? 10 : 9);
+		nameLabel.CustomMinimumSize = new Vector2(0, 12);
+		vb.AddChild(nameLabel);
+
+		// Active unit gets a small marker triangle below
+		if (active)
+		{
+			var marker = new Label();
+			marker.Text = "▼";
+			marker.HorizontalAlignment = HorizontalAlignment.Center;
+			marker.AddThemeColorOverride("font_color", ColGold);
+			marker.AddThemeFontSizeOverride("font_size", 8);
+			marker.SetAnchorsPreset(Control.LayoutPreset.BottomWide);
+			marker.OffsetTop = -2;
+			card.AddChild(marker);
+		}
+
+		return card;
 	}
 
 	// ═══════════════════════════════════════════════════════
@@ -629,11 +719,14 @@ public partial class BattleHUD : CanvasLayer
 
 	void BuildPhaseLabel()
 	{
+		// Phase label — centered, below the turn order strip
 		_phaseLabel = new Label();
-		_phaseLabel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
-		_phaseLabel.Position = new Vector2(16, 60);
+		_phaseLabel.SetAnchorsPreset(Control.LayoutPreset.TopWide);
+		_phaseLabel.OffsetTop = 78;  // Below the 72px turn order strip
+		_phaseLabel.OffsetBottom = 100;
+		_phaseLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_phaseLabel.AddThemeColorOverride("font_color", UITheme.Accent);
-		_phaseLabel.AddThemeFontSizeOverride("font_size", 14);
+		_phaseLabel.AddThemeFontSizeOverride("font_size", 16);
 		_root.AddChild(_phaseLabel);
 	}
 
@@ -718,7 +811,7 @@ public partial class BattleHUD : CanvasLayer
 
 		var bars = new VBoxContainer(); bars.AddThemeConstantOverride("separation", 2); pvb.AddChild(bars);
 		AddInspectBarRow(bars, "HP", u.CurrentHp, u.MaxHp, true);
-		AddInspectBarRow(bars, "EP", u.CurrentEther, u.MaxEther, false);
+		AddInspectBarRow(bars, "AE", u.CurrentAether, u.MaxAether, false);
 
 		// ─── STATS ───
 		var sCol = new PanelContainer();
@@ -738,8 +831,8 @@ public partial class BattleHUD : CanvasLayer
 		var sg = new GridContainer(); sg.Columns = 2;
 		sg.AddThemeConstantOverride("h_separation", 16); sg.AddThemeConstantOverride("v_separation", 1);
 		svb.AddChild(sg);
-		AddStat(sg, "Strength", u.Strength); AddStat(sg, "Speed", u.Speed);
-		AddStat(sg, "Agility", u.Agility); AddStat(sg, "Endurance", u.Endurance);
+		AddStat(sg, "Strength", u.Strength); AddStat(sg, "Vitality", u.Vitality);
+		AddStat(sg, "Agility", u.Agility); AddStat(sg, "Dexterity", u.Dexterity);
 		AddStat(sg, "Stamina", u.Stamina); AddStat(sg, "Ether Ctrl", u.EtherControl);
 
 		AddSection(svb, "◆ DERIVED");
@@ -794,17 +887,19 @@ public partial class BattleHUD : CanvasLayer
 
 	void BuildCrownButton()
 	{
+		// Crown button — top-left corner, standalone
 		_crownBtn = new Button();
 		_crownBtn.TooltipText = "Main Menu";
-		_crownBtn.CustomMinimumSize = new Vector2(40, 40);
+		_crownBtn.CustomMinimumSize = new Vector2(44, 44);
 		_crownBtn.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
-		_crownBtn.Position = new Vector2(16, 12);
+		_crownBtn.Position = new Vector2(12, 8);
 
-		// Use the gold crown icon
 		var crownIcon = new TextureRect();
-		crownIcon.CustomMinimumSize = new Vector2(24, 24);
+		crownIcon.CustomMinimumSize = new Vector2(28, 28);
 		crownIcon.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
 		crownIcon.SetAnchorsPreset(Control.LayoutPreset.Center);
+		crownIcon.GrowHorizontal = Control.GrowDirection.Both;
+		crownIcon.GrowVertical = Control.GrowDirection.Both;
 		crownIcon.MouseFilter = Control.MouseFilterEnum.Ignore;
 		if (ResourceLoader.Exists("res://Assets/Icons/icon_gold_crown.png"))
 			crownIcon.Texture = GD.Load<Texture2D>("res://Assets/Icons/icon_gold_crown.png");
@@ -815,7 +910,7 @@ public partial class BattleHUD : CanvasLayer
 		var normal = new StyleBoxFlat();
 		normal.BgColor = BgPanel;
 		normal.SetCornerRadiusAll(6);
-		normal.SetContentMarginAll(4);
+		normal.SetContentMarginAll(6);
 		normal.BorderColor = BdSubtle;
 		normal.SetBorderWidthAll(1);
 		_crownBtn.AddThemeStyleboxOverride("normal", normal);
@@ -826,7 +921,6 @@ public partial class BattleHUD : CanvasLayer
 		_crownBtn.AddThemeStyleboxOverride("hover", hover);
 		_crownBtn.AddThemeStyleboxOverride("focus", hover);
 
-		_crownBtn.AddThemeFontSizeOverride("font_size", 20);
 		_crownBtn.Pressed += OnCrownPressed;
 		_root.AddChild(_crownBtn);
 	}
@@ -858,7 +952,7 @@ public partial class BattleHUD : CanvasLayer
 		_cmdPanel.Visible = true;
 		SetEnabled("Move", !unit.HasMoved);
 		SetEnabled("Attack", !unit.HasActed);
-		SetEnabled("Ability", !unit.HasActed && unit.CurrentEther > 0);
+		SetEnabled("Ability", !unit.HasActed && unit.CurrentAether > 0);
 		SetEnabled("Item", !unit.HasActed);
 		SetEnabled("Defend", !unit.HasActed);
 		SetEnabled("Flee", true);

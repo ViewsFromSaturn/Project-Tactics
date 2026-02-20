@@ -37,9 +37,9 @@ public class BattleUnit
 	public int TilesMoved;  // track how far we moved this turn
 
 	// ─── BASE STATS (from PlayerData) ────────────────────
-	public int Strength, Speed, Agility, Endurance, Stamina, EtherControl;
-	public int MaxHp, MaxEther;
-	public int CurrentHp, CurrentEther;
+	public int Strength, Vitality, Dexterity, Agility, EtherControl, Mind;
+	public int MaxHp, MaxAether;
+	public int CurrentHp, CurrentAether;
 	public int Atk, Def, Eatk, Edef, Avd, Acc;
 	public float CritPercent;
 	public int Move, Jump;
@@ -103,7 +103,7 @@ public class BattleUnit
 	// ─── DERIVED HELPERS ─────────────────────────────────
 	public bool IsAlive => CurrentHp > 0;
 	public float HpPercent => MaxHp > 0 ? (float)CurrentHp / MaxHp : 0;
-	public float EtherPercent => MaxEther > 0 ? (float)CurrentEther / MaxEther : 0;
+	public float AetherPercent => MaxAether > 0 ? (float)CurrentAether / MaxAether : 0;
 
 	// ─── STATIC RT FORMULAS ──────────────────────────────
 
@@ -127,11 +127,11 @@ public class BattleUnit
 			GridPosition = spawnPos,
 			Facing = team == UnitTeam.TeamA ? Facing.North : Facing.South,
 
-			Strength = p.Strength, Speed = p.Speed, Agility = p.Agility,
-			Endurance = p.Endurance, Stamina = p.Stamina, EtherControl = p.EtherControl,
+			Strength = p.Strength, Dexterity = p.Dexterity, Agility = p.Agility,
+			Vitality = p.Vitality, Mind = p.Mind, EtherControl = p.EtherControl,
 
-			MaxHp = p.MaxHp, MaxEther = p.MaxEther,
-			CurrentHp = p.MaxHp, CurrentEther = p.MaxEther,
+			MaxHp = p.MaxHp, MaxAether = p.MaxAether,
+			CurrentHp = p.MaxHp, CurrentAether = p.MaxAether,
 
 			Atk = p.Atk, Def = p.Def, Eatk = p.Eatk, Edef = p.Edef,
 			Avd = p.Avd, Acc = p.Acc, CritPercent = p.CritPercent,
@@ -140,8 +140,8 @@ public class BattleUnit
 			EquipWeight = equipWeight,
 			CurrentRt = 0
 		};
-		unit.BaseWt = CalcBaseWt(p.Agility, p.Speed, equipWeight);
-		unit.MoveRtPerTile = CalcMoveRtPerTile(p.Speed);
+		unit.BaseWt = CalcBaseWt(p.Agility, p.Agility, equipWeight);
+		unit.MoveRtPerTile = CalcMoveRtPerTile(p.Agility);
 		return unit;
 	}
 
@@ -160,9 +160,9 @@ public class BattleUnit
 			Endurance = end, Stamina = sta, EtherControl = etc,
 
 			MaxHp = 200 + end * 15 + sta * 8,
-			MaxEther = 100 + etc * 20 + sta * 5,
+			MaxAether = 100 + etc * 20 + sta * 5,
 			CurrentHp = 200 + end * 15 + sta * 8,
-			CurrentEther = 100 + etc * 20 + sta * 5,
+			CurrentAether = 100 + etc * 20 + sta * 5,
 
 			Atk = (int)(str * 2.5f + spd * 0.5f),
 			Def = (int)(end * 2.0f + sta * 0.5f),

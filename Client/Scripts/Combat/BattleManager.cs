@@ -402,7 +402,7 @@ public partial class BattleManager : Node3D
 		if (index < 0 || index >= abilities.Count) return;
 		var ab = abilities[index];
 		_activeUnit.HasActed = true;
-		_activeUnit.CurrentEther = Mathf.Max(0, _activeUnit.CurrentEther - ab.EtherCost);
+		_activeUnit.CurrentAether = Mathf.Max(0, _activeUnit.CurrentAether - ab.EtherCost);
 		CombatLog($"✦ {_activeUnit.Name} uses {ab.Name}! (-{ab.EtherCost} EP)");
 		EndTurnWithAction(ab.RtCost);
 	}

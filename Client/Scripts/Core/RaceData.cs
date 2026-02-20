@@ -172,7 +172,7 @@ public partial class RaceData : Node
     {
         var race = GetRace(data.RaceName);
         data.RaceHpModifier = race.HpModifier;
-        data.RaceEtherModifier = race.EtherModifier;
+        data.RaceAetherModifier = race.EtherModifier;
         data.RaceAtkModifier = race.AtkModifier;
         data.RaceEatkModifier = race.EatkModifier;
         data.RaceAvdModifier = race.AvdModifier;
