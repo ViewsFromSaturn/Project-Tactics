@@ -271,7 +271,7 @@ public partial class BattleHUD : CanvasLayer
 		for (int i = 0; i < _abilities.Count; i++)
 		{
 			var ab = _abilities[i];
-			var btn = MakeSubBtn(ab.Icon, ab.Name, $"{ab.EtherCost} EP", ab.IsUsable);
+			var btn = MakeSubBtn(ab.Icon, ab.Name, ab.CostString(), ab.IsUsable);
 			int ci = i;
 			btn.Pressed += () => OnAbilityClicked(ci);
 			btn.MouseEntered += () => { SelectSubItem(ci); UpdateTooltip(ci); };
@@ -350,7 +350,7 @@ public partial class BattleHUD : CanvasLayer
 		var vb = new VBoxContainer(); vb.AddThemeConstantOverride("separation", 2);
 		_tooltipPanel.AddChild(vb);
 		MakeLabel(vb, ab.Name, TxBright, 14);
-		MakeLabel(vb, $"{Cap(ab.Category)} · {ab.TargetType}", UITheme.Accent, 11);
+		MakeLabel(vb, $"{Cap(ab.Category.ToString())} · {ab.TargetType}", UITheme.Accent, 11);
 		var desc = new Label();
 		desc.Text = ab.Description; desc.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		desc.CustomMinimumSize = new Vector2(180, 0);
@@ -360,7 +360,7 @@ public partial class BattleHUD : CanvasLayer
 		MakeLabel(vb, $"Power: {ab.Power}", TxDark, 11);
 		MakeLabel(vb, $"Range: {ab.Range} tiles", TxDark, 11);
 		MakeLabel(vb, $"RT Cost: {ab.RtCost}", TxDark, 11);
-		MakeLabel(vb, $"Cost: {ab.EtherCost} EP", ColEther, 11);
+		MakeLabel(vb, $"Cost: {ab.CostString()}", ColEther, 11);
 		_tooltipPanel.Visible = true;
 	}
 
@@ -815,7 +815,7 @@ public partial class BattleHUD : CanvasLayer
 
 		var bars = new VBoxContainer(); bars.AddThemeConstantOverride("separation", 2); pvb.AddChild(bars);
 		AddInspectBarRow(bars, "HP", u.CurrentHp, u.MaxHp, true);
-		AddInspectBarRow(bars, "STA", u.CurrentStamina, u.MaxStamina, false);
+		AddInspectBarRow(bars, "STA", u.CurrentStamina, u.MaxStamina, false, new Color(0.85f, 0.55f, 0.15f));
 		AddInspectBarRow(bars, "AE", u.CurrentAether, u.MaxAether, false);
 
 		// ─── STATS ───
@@ -866,11 +866,11 @@ public partial class BattleHUD : CanvasLayer
 		foreach (var ab in _abilities)
 		{
 			var ar = new HBoxContainer(); ar.AddThemeConstantOverride("separation", 8);
-			MakeLabel(ar, ab.Icon, CatColor(ab.Category), 12);
+			MakeLabel(ar, ab.Icon, CatColor(ab.Category.ToString()), 12);
 			var n = new Label(); n.Text = ab.Name; n.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			n.AddThemeColorOverride("font_color", TxPrimary); n.AddThemeFontSizeOverride("font_size", 12);
 			ar.AddChild(n);
-			MakeLabel(ar, new string('◆', Math.Clamp(ab.EtherCost / 15, 1, 3)), ColGold, 10);
+			MakeLabel(ar, new string('◆', Math.Clamp(ab.AetherCost / 15, 1, 3)), ColGold, 10);
 			avb.AddChild(ar);
 		}
 		AddSection(avb, "◆ WEAPON SKILL");
@@ -1119,17 +1119,22 @@ public partial class BattleHUD : CanvasLayer
 		MakeLabel(h, $"{cur}/{max}", TxDim, 10);
 	}
 
-	void AddInspectBarRow(VBoxContainer par, string label, int cur, int max, bool hp)
+	void AddInspectBarRow(VBoxContainer par, string label, int cur, int max, bool hp, Color? barColor = null)
 	{
 		var r = new HBoxContainer(); MakeLabel(r, label, TxDark, 11);
+		r.CustomMinimumSize = new Vector2(220, 0);
 		var sp = new Control(); sp.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill; r.AddChild(sp);
 		MakeLabel(r, $"{cur} / {max}", TxDim, 11); par.AddChild(r);
 		float pct = max > 0 ? (float)cur / max : 0;
 		var bg = new Panel(); bg.CustomMinimumSize = new Vector2(220, 8);
 		var bgs = new StyleBoxFlat(); bgs.BgColor = UITheme.IsDarkMode ? new Color(0.1f,0.1f,0.15f,0.8f) : new Color(0,0,0,0.06f);
 		bgs.SetCornerRadiusAll(2); bg.AddThemeStyleboxOverride("panel", bgs); par.AddChild(bg);
-		var f = new Panel(); f.SetAnchorsPreset(Control.LayoutPreset.LeftWide); f.Size = new Vector2(220*pct, 8);
-		var fs = new StyleBoxFlat(); fs.BgColor = hp ? (pct > 0.5f ? ColHpFull : pct > 0.25f ? ColHpMid : ColHpLow) : ColEther;
+		var f = new Panel(); f.Position = Vector2.Zero; f.Size = new Vector2(220*pct, 8);
+		Color fillCol;
+		if (barColor.HasValue) fillCol = barColor.Value;
+		else if (hp) fillCol = pct > 0.5f ? ColHpFull : pct > 0.25f ? ColHpMid : ColHpLow;
+		else fillCol = ColEther;
+		var fs = new StyleBoxFlat(); fs.BgColor = fillCol;
 		fs.SetCornerRadiusAll(2); f.AddThemeStyleboxOverride("panel", fs); bg.AddChild(f);
 	}
 

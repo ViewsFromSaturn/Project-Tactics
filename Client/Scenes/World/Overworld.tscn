@@ -70,13 +70,12 @@ script = ExtResource("6_xr6cp")
 
 [node name="OverworldHUD" type="Control" parent="HUDLayer" unique_id=516237565]
 layout_mode = 3
-anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -890.0
-offset_top = -534.0
-offset_right = -890.0
-offset_bottom = -534.0
+offset_left = -872.0
+offset_top = -503.0
+offset_right = -872.0
+offset_bottom = -503.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
