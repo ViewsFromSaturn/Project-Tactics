@@ -124,8 +124,9 @@ public static class BattleReport
 		// Main container — centered
 		var outer = new PanelContainer();
 		outer.SetAnchorsPreset(Control.LayoutPreset.Center);
+		outer.GrowHorizontal = Control.GrowDirection.Both;
+		outer.GrowVertical = Control.GrowDirection.Both;
 		outer.CustomMinimumSize = new Vector2(820, 480);
-		outer.Position = new Vector2(-410, -220);
 		var outerStyle = new StyleBoxFlat();
 		outerStyle.BgColor = BgDark;
 		outerStyle.BorderColor = BorderAccent;
@@ -311,7 +312,8 @@ public static class BattleReport
 		// ═══════════════════════════════════════════════
 		dim.Modulate = new Color(1, 1, 1, 0);
 		outer.Modulate = new Color(1, 1, 1, 0);
-		outer.Position += new Vector2(0, 20); // slide up from below
+		outer.OffsetTop += 20; // slide up from below
+		outer.OffsetBottom += 20;
 
 		// Stagger: dim fades, then panel slides up + fades
 		var tween = layer.CreateTween();
@@ -320,7 +322,9 @@ public static class BattleReport
 
 		// Parallel slide-up
 		var slideTween = layer.CreateTween();
-		slideTween.TweenProperty(outer, "position:y", outer.Position.Y - 20f, 0.5f)
+		slideTween.TweenProperty(outer, "offset_top", outer.OffsetTop - 20f, 0.5f)
+			.SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic).SetDelay(0.1f);
+		slideTween.Parallel().TweenProperty(outer, "offset_bottom", outer.OffsetBottom - 20f, 0.5f)
 			.SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic).SetDelay(0.1f);
 
 		return layer;

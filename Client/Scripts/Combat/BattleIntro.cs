@@ -60,20 +60,25 @@ public partial class BattleIntro : CanvasLayer
 		slashLine.Color = new Color(1, 1, 1, 0.15f);
 		slashLine.CustomMinimumSize = new Vector2(3, 800);
 		slashLine.SetAnchorsPreset(Control.LayoutPreset.Center);
-		slashLine.Position = new Vector2(-1, -400);
+		slashLine.GrowHorizontal = Control.GrowDirection.Both;
+		slashLine.GrowVertical = Control.GrowDirection.Both;
 		slashLine.Rotation = Mathf.DegToRad(12);
 		AddChild(slashLine);
 
 		// ─── LEFT BANNER (player team) ───
 		var leftBanner = CreateBanner(_playerName, PlayerColor, true);
-		leftBanner.Position = new Vector2(-600, 0); // start offscreen left
 		leftBanner.SetAnchorsPreset(Control.LayoutPreset.CenterLeft);
+		leftBanner.GrowVertical = Control.GrowDirection.Both;
+		leftBanner.OffsetLeft = -400; // start offscreen left
+		leftBanner.OffsetRight = -100;
 		AddChild(leftBanner);
 
 		// ─── RIGHT BANNER (enemy team) ───
 		var rightBanner = CreateBanner(_enemyName, EnemyColor, false);
-		rightBanner.Position = new Vector2(600, 0); // start offscreen right
 		rightBanner.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
+		rightBanner.GrowVertical = Control.GrowDirection.Both;
+		rightBanner.OffsetLeft = 100;  // start offscreen right
+		rightBanner.OffsetRight = 400;
 		AddChild(rightBanner);
 
 		// ─── "ENGAGE" TEXT ───
@@ -84,9 +89,10 @@ public partial class BattleIntro : CanvasLayer
 		engageLabel.AddThemeFontSizeOverride("font_size", 56);
 		engageLabel.AddThemeColorOverride("font_color", EngageGold);
 		engageLabel.SetAnchorsPreset(Control.LayoutPreset.Center);
-		engageLabel.Position = new Vector2(-150, -35);
+		engageLabel.GrowHorizontal = Control.GrowDirection.Both;
+		engageLabel.GrowVertical = Control.GrowDirection.Both;
 		engageLabel.CustomMinimumSize = new Vector2(300, 70);
-		engageLabel.Modulate = new Color(1, 1, 1, 0); // starts invisible
+		engageLabel.Modulate = new Color(1, 1, 1, 0);
 		AddChild(engageLabel);
 
 		// ─── VS ───
@@ -97,8 +103,10 @@ public partial class BattleIntro : CanvasLayer
 		vsLabel.AddThemeFontSizeOverride("font_size", 20);
 		vsLabel.AddThemeColorOverride("font_color", new Color(1, 1, 1, 0.4f));
 		vsLabel.SetAnchorsPreset(Control.LayoutPreset.Center);
-		vsLabel.Position = new Vector2(-25, -60);
+		vsLabel.GrowHorizontal = Control.GrowDirection.Both;
+		vsLabel.GrowVertical = Control.GrowDirection.Both;
 		vsLabel.CustomMinimumSize = new Vector2(50, 30);
+		vsLabel.OffsetTop = -45; vsLabel.OffsetBottom = -15;
 		vsLabel.Modulate = new Color(1, 1, 1, 0);
 		AddChild(vsLabel);
 
@@ -116,9 +124,13 @@ public partial class BattleIntro : CanvasLayer
 
 		// Phase 1: Banners slide in (0.2 → 0.6)
 		t.SetParallel(true);
-		t.TweenProperty(leftBanner, "position:x", 40f, 0.4f)
+		t.TweenProperty(leftBanner, "offset_left", 40f, 0.4f)
 			.SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic).SetDelay(0.2f);
-		t.TweenProperty(rightBanner, "position:x", -340f, 0.4f)
+		t.TweenProperty(leftBanner, "offset_right", 340f, 0.4f)
+			.SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic).SetDelay(0.2f);
+		t.TweenProperty(rightBanner, "offset_left", -340f, 0.4f)
+			.SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic).SetDelay(0.2f);
+		t.TweenProperty(rightBanner, "offset_right", -40f, 0.4f)
 			.SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Cubic).SetDelay(0.2f);
 
 		// Phase 2: VS fades in (0.6)
@@ -128,7 +140,7 @@ public partial class BattleIntro : CanvasLayer
 		t.TweenProperty(engageLabel, "modulate:a", 1f, 0.15f).SetDelay(1.0f);
 		// Scale punch — start big, snap to normal
 		engageLabel.Scale = new Vector2(1.6f, 1.6f);
-		engageLabel.PivotOffset = new Vector2(150, 35);
+		engageLabel.PivotOffset = engageLabel.CustomMinimumSize / 2;
 		t.TweenProperty(engageLabel, "scale", Vector2.One, 0.2f)
 			.SetEase(Tween.EaseType.Out).SetTrans(Tween.TransitionType.Back).SetDelay(1.0f);
 
