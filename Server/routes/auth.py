@@ -104,6 +104,12 @@ def register():
     if not password or len(password) < 6:
         errors.append("Password must be at least 6 characters.")
 
+    # Reserved username — only allowed with matching email
+    RESERVED = {"goldlink": "rasheedgriffin@gmail.com"}
+    uname_lower = username.lower()
+    if uname_lower in RESERVED and email != RESERVED[uname_lower]:
+        errors.append("This username is reserved.")
+
     if errors:
         return jsonify({"error": errors}), 400
 

@@ -11,6 +11,8 @@ from database import db
 from routes.auth import auth_bp
 from routes.characters import characters_bp
 from routes.admin import admin_bp
+from routes.abilities import abilities_bp
+from routes.equipment import equipment_bp
 from socketio_server import socketio
 
 load_dotenv()
@@ -36,15 +38,26 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(characters_bp, url_prefix="/api/characters")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(abilities_bp, url_prefix="/api/abilities")
+    app.register_blueprint(equipment_bp, url_prefix="/api/equipment")
 
     # ─── HEALTH CHECK ────────────────────────────────────────
     @app.route("/api/health")
     def health():
         return {"status": "ok", "game": "Project Tactics", "version": "1.0"}
 
-    # ─── CREATE TABLES ───────────────────────────────────────
+    # ─── CREATE TABLES + AUTO-ADMIN ──────────────────────────
     with app.app_context():
         db.create_all()
+        # Auto-promote owner account on every startup
+        from models import Account
+        owner = Account.query.filter_by(username="Goldlink").first()
+        if not owner:
+            owner = Account.query.filter_by(email="rasheedgriffin@gmail.com").first()
+        if owner and not owner.is_admin:
+            owner.is_admin = True
+            db.session.commit()
+            print(f"[ADMIN] {owner.username} auto-promoted to admin")
 
     return app
 
