@@ -191,7 +191,7 @@ public partial class AdminPanel : WindowPanel
 			TryAddStat(stats, "agility", agiRow.Input);
 			TryAddStat(stats, "ether_control", etcRow.Input);
 			TryAddStat(stats, "mind", mndRow.Input);
-			if (stats.Count == 0) { _busy = false; SetFeedback("Enter at least one stat value.", ColRed); return; }
+			if (stats.Count == 0) { SetFeedback("Enter at least one stat value.", ColRed); return; }
 			var resp = await ApiClient.Instance.AdminSetStats(_selectedId, stats);
 			ShowResult(resp);
 		}));
@@ -221,7 +221,7 @@ public partial class AdminPanel : WindowPanel
 			string lvlText = lvlRow.Input.Text.Trim();
 			if (!string.IsNullOrEmpty(lvlText) && int.TryParse(lvlText, out int lv)) level = lv;
 			string rank = rankDrop.Selected > 0 ? rankDrop.GetItemText(rankDrop.Selected) : null;
-			if (level == null && rank == null) { _busy = false; SetFeedback("Enter a level or select a rank.", ColRed); return; }
+			if (level == null && rank == null) { SetFeedback("Enter a level or select a rank.", ColRed); return; }
 			var resp = await ApiClient.Instance.AdminSetLevel(_selectedId, level, rank);
 			ShowResult(resp);
 		}));
@@ -252,7 +252,7 @@ public partial class AdminPanel : WindowPanel
 			TryAddStat(grants, "agility", gAgiRow.Input);
 			TryAddStat(grants, "ether_control", gEtcRow.Input);
 			TryAddStat(grants, "mind", gMndRow.Input);
-			if (grants.Count == 0) { _busy = false; SetFeedback("Enter at least one stat value.", ColRed); return; }
+			if (grants.Count == 0) { SetFeedback("Enter at least one stat value.", ColRed); return; }
 			var resp = await ApiClient.Instance.AdminGrantStats(_selectedId, grants);
 			ShowResult(resp);
 		}));
@@ -269,7 +269,7 @@ public partial class AdminPanel : WindowPanel
 			// Need account_id — reload characters to get it
 			var entry = _selected.Value;
 			var charResp = await ApiClient.Instance.GetCharacter(entry.Id);
-			if (!charResp.Success) { _busy = false; SetFeedback($"Error: {charResp.Error}", ColRed); return; }
+			if (!charResp.Success) { SetFeedback($"Error: {charResp.Error}", ColRed); return; }
 			using var doc = JsonDocument.Parse(charResp.Body);
 			var accId = doc.RootElement.GetProperty("character").GetProperty("account_id").GetString();
 			var resp = await ApiClient.Instance.AdminBan(accId, true);
@@ -280,7 +280,7 @@ public partial class AdminPanel : WindowPanel
 			if (!_selected.HasValue) { SetFeedback("Select a target character.", ColRed); return; }
 			var entry = _selected.Value;
 			var charResp = await ApiClient.Instance.GetCharacter(entry.Id);
-			if (!charResp.Success) { _busy = false; SetFeedback($"Error: {charResp.Error}", ColRed); return; }
+			if (!charResp.Success) { SetFeedback($"Error: {charResp.Error}", ColRed); return; }
 			using var doc = JsonDocument.Parse(charResp.Body);
 			var accId = doc.RootElement.GetProperty("character").GetProperty("account_id").GetString();
 			var resp = await ApiClient.Instance.AdminBan(accId, false);
@@ -318,7 +318,7 @@ public partial class AdminPanel : WindowPanel
 		_root.AddChild(ActionButton("Broadcast", async () =>
 		{
 			string msg = announceInput.Text.Trim();
-			if (string.IsNullOrEmpty(msg)) { _busy = false; SetFeedback("Enter a message.", ColRed); return; }
+			if (string.IsNullOrEmpty(msg)) { SetFeedback("Enter a message.", ColRed); return; }
 			var resp = await ApiClient.Instance.AdminAnnounce(msg);
 			ShowResult(resp);
 			if (resp.Success) announceInput.Text = "";
