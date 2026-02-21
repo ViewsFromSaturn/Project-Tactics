@@ -1,5 +1,5 @@
 """
-Character routes: CRUD, training, name checking.
+Character routes: CRUD, training (12 PM EST reset), RP sessions, name checking.
 """
 from datetime import datetime, timezone
 
@@ -8,6 +8,10 @@ from flask import Blueprint, request, jsonify, g
 from database import db
 from models import Character
 from routes.auth import require_auth
+from daily_reset import (
+    check_and_reset, award_rp_session_tp, seconds_until_next_reset,
+    get_current_reset_period, calc_training_cost, get_lowest_stat
+)
 
 characters_bp = Blueprint("characters", __name__)
 
@@ -179,8 +183,7 @@ def update_character(character_id):
     data = request.get_json()
 
     # Only allow updating specific fields from client
-    allowed_fields = ["bio", "current_hp", "current_stamina", "current_aether",
-                      "training_points_bank", "last_reset_date"]
+    allowed_fields = ["bio", "current_hp", "current_stamina", "current_aether"]
 
     for field in allowed_fields:
         if field in data:
@@ -213,13 +216,17 @@ def delete_character(character_id):
 
 
 # ═══════════════════════════════════════════════════════════
-#  TRAINING (SERVER-AUTHORITATIVE)
+#  TRAINING (SERVER-AUTHORITATIVE, 12:00 PM EST RESET)
 # ═══════════════════════════════════════════════════════════
 
 @characters_bp.route("/<character_id>/train", methods=["POST"])
 @require_auth
 def train_stat(character_id):
-    """Allocate training points to a stat. Server-authoritative with soft cap."""
+    """
+    Spend banked TP on a training stat. Server-authoritative with soft cap.
+    TP bank carries over between days — 12 PM EST reset only affects RP counters.
+    Soft cap: gap 10-19 = 2 TP per point, gap 20+ = 4 TP per point.
+    """
     character = Character.query.filter_by(
         id=character_id, account_id=g.current_account.id
     ).first()
@@ -227,102 +234,160 @@ def train_stat(character_id):
     if not character:
         return jsonify({"error": "Character not found."}), 404
 
+    # Always check reset on any training action
+    check_and_reset(character)
+
     data = request.get_json()
     stat = data.get("stat", "").lower()
     points = data.get("points", 1)
 
     valid_stats = {
-        "strength": "strength",
-        "str": "strength",
-        "vitality": "vitality",
-        "vit": "vitality",
-        "agility": "agility",
-        "agi": "agility",
-        "dexterity": "dexterity",
-        "dex": "dexterity",
-        "mind": "mind",
-        "mnd": "mind",
-        "ether_control": "ether_control",
-        "etc": "ether_control",
+        "strength": "strength", "str": "strength",
+        "vitality": "vitality", "vit": "vitality",
+        "agility": "agility", "agi": "agility",
+        "dexterity": "dexterity", "dex": "dexterity",
+        "mind": "mind", "mnd": "mind",
+        "ether_control": "ether_control", "etc": "ether_control",
     }
 
     if stat not in valid_stats:
-        return jsonify({"error": f"Invalid stat. Use: {list(valid_stats.keys())}"}), 400
+        return jsonify({"error": f"Invalid stat: '{stat}'"}), 400
 
     stat_name = valid_stats[stat]
-
-    # Check daily reset — add TP to bank (v3.0: TP persists, daily cap on earning)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if character.last_reset_date != today:
-        level = character.character_level
-        if level < 10:
-            daily_tp = 5
-        elif level < 20:
-            daily_tp = 3
-        else:
-            daily_tp = 1
-        character.training_points_bank += daily_tp  # Add to bank, not replace
-        character.daily_tp_earned = 0
-        character.daily_rp_sessions = 0
-        character.last_reset_date = today
 
     if points < 1:
         return jsonify({"error": "Must allocate at least 1 point."}), 400
 
-    if character.training_points_bank < points:
+    if character.training_points_bank <= 0:
         return jsonify({
-            "error": f"Not enough points. Remaining: {character.training_points_bank}"
+            "error": "No TP available. Earn TP through RP sessions.",
+            "training_points_bank": 0,
         }), 400
 
-    # ─── SOFT CAP (DIMINISHING RETURNS) ──────────────────
-    current_value = getattr(character, stat_name)
-    stats = [character.strength, character.vitality, character.agility,
-             character.dexterity, character.mind, character.ether_control]
-    lowest = min(stats)
-    gap = current_value - lowest
+    # ── SERVER-SIDE SOFT CAP ENFORCEMENT ──
+    # Simulate allocation point-by-point to enforce correct TP costs
+    lowest = get_lowest_stat(character)
+    current_val = getattr(character, stat_name)
+    tp_available = character.training_points_bank
 
-    # Calculate effective points
-    actual_gain = 0
-    points_spent = 0
+    total_gained = 0
+    total_spent = 0
+    sim_val = current_val
 
     for _ in range(points):
-        if points_spent >= character.training_points_bank:
+        cost = calc_training_cost(sim_val, lowest)
+        if total_spent + cost > tp_available:
             break
+        total_spent += cost
+        sim_val += 1
+        total_gained += 1
 
-        if gap < 10:
-            cost = 1   # 100% efficiency
-        elif gap < 20:
-            cost = 2   # 50% efficiency
-        else:
-            cost = 4   # 25% efficiency
-
-        if points_spent + cost > character.training_points_bank:
-            break
-
-        actual_gain += 1
-        points_spent += cost
-        gap += 1
-
-    if actual_gain == 0:
+    if total_gained == 0:
+        cost_needed = calc_training_cost(current_val, lowest)
         return jsonify({
-            "error": "Not enough points for soft cap cost.",
-            "gap": gap,
-            "cost_per_point": 4 if gap >= 20 else (2 if gap >= 10 else 1),
+            "error": f"Need {cost_needed} TP for +1 {stat_name} (soft cap). Have {tp_available}.",
+            "training_points_bank": tp_available,
         }), 400
 
-    # Apply
-    setattr(character, stat_name, current_value + actual_gain)
-    character.training_points_bank -= points_spent
+    # Apply stat increase + deduct TP
+    setattr(character, stat_name, current_val + total_gained)
+    character.training_points_bank -= total_spent
 
-    # Recalc current HP/ether (cap at new max)
+    # Cap combat pools (don't exceed new max after stat change)
     character.current_hp = min(character.current_hp, character.max_hp)
+    character.current_stamina = min(character.current_stamina, character.max_stamina)
     character.current_aether = min(character.current_aether, character.max_aether)
 
     db.session.commit()
 
     return jsonify({
-        "message": f"+{actual_gain} {stat_name} ({points_spent} points spent)",
+        "message": f"+{total_gained} {stat_name} (spent {total_spent} TP)",
+        "stat_gained": total_gained,
+        "tp_spent": total_spent,
         "character": character.to_dict(),
+    }), 200
+
+
+# ═══════════════════════════════════════════════════════════
+#  RP SESSION → TP EARNING (SERVER-AUTHORITATIVE)
+# ═══════════════════════════════════════════════════════════
+
+@characters_bp.route("/<character_id>/rp-session", methods=["POST"])
+@require_auth
+def complete_rp_session(character_id):
+    """
+    Called by the chat system when a valid RP session is completed.
+    Server validates session count and awards TP per schedule:
+      1st → +2 TP, 2nd → +2 TP, 3rd → +1 TP (capped by level)
+
+    Chat system must verify before calling:
+      - 10+ IC messages (Say, Emote, Yell verbs)
+      - 30+ minutes active RP (gaps >5min excluded)
+      - At least 1 other player
+      - Anti-spam check passed (no copy-paste)
+    """
+    character = Character.query.filter_by(
+        id=character_id, account_id=g.current_account.id
+    ).first()
+
+    if not character:
+        return jsonify({"error": "Character not found."}), 404
+
+    tp_awarded, total_earned, at_cap = award_rp_session_tp(character)
+    db.session.commit()
+
+    if tp_awarded == 0 and at_cap:
+        return jsonify({
+            "message": "Daily TP cap reached. New TP available after reset.",
+            "tp_awarded": 0,
+            "daily_tp_earned": total_earned,
+            "daily_tp_cap": character.daily_tp_cap,
+            "training_points_bank": character.training_points_bank,
+            "at_cap": True,
+            "seconds_until_reset": seconds_until_next_reset(),
+        }), 200
+
+    return jsonify({
+        "message": f"RP session complete! +{tp_awarded} TP earned.",
+        "tp_awarded": tp_awarded,
+        "daily_tp_earned": total_earned,
+        "daily_tp_cap": character.daily_tp_cap,
+        "daily_rp_sessions": character.daily_rp_sessions,
+        "training_points_bank": character.training_points_bank,
+        "at_cap": at_cap,
+        "seconds_until_reset": seconds_until_next_reset(),
+    }), 200
+
+
+# ═══════════════════════════════════════════════════════════
+#  TRAINING STATUS (read-only, for UI countdown)
+# ═══════════════════════════════════════════════════════════
+
+@characters_bp.route("/<character_id>/training-status", methods=["GET"])
+@require_auth
+def training_status(character_id):
+    """
+    Current training period info for the UI timer and badge.
+    Triggers reset check so client always sees fresh data.
+    """
+    character = Character.query.filter_by(
+        id=character_id, account_id=g.current_account.id
+    ).first()
+
+    if not character:
+        return jsonify({"error": "Character not found."}), 404
+
+    check_and_reset(character)
+    db.session.commit()
+
+    return jsonify({
+        "training_points_bank": character.training_points_bank,
+        "daily_tp_earned": character.daily_tp_earned,
+        "daily_tp_cap": character.daily_tp_cap,
+        "daily_rp_sessions": character.daily_rp_sessions,
+        "reset_period": get_current_reset_period(),
+        "seconds_until_reset": seconds_until_next_reset(),
+        "character_level": character.character_level,
     }), 200
 
 

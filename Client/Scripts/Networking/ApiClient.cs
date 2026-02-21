@@ -55,7 +55,7 @@ public partial class ApiClient : Node
 	private HttpRequest CreateRequest()
 	{
 		var req = new HttpRequest();
-		req.Timeout = 5.0; // 5 second timeout instead of infinite
+		req.Timeout = 5.0;
 		AddChild(req);
 		return req;
 	}
@@ -100,7 +100,6 @@ public partial class ApiClient : Node
 			return new ApiResponse { Success = false, Error = $"Request failed: {err}" };
 		}
 
-		// Wait for completion
 		var result = await ToSignal(req, HttpRequest.SignalName.RequestCompleted);
 
 		long resultCode = (long)result[0];
@@ -123,7 +122,6 @@ public partial class ApiClient : Node
 		}
 		else
 		{
-			// Try to extract error message from JSON
 			string errorMsg = $"HTTP {responseCode}";
 			try
 			{
@@ -207,8 +205,7 @@ public partial class ApiClient : Node
 
 		if (resp.Success)
 		{
-			// Parse account info from resume response
-			using var doc = System.Text.Json.JsonDocument.Parse(resp.Body);
+			using var doc = JsonDocument.Parse(resp.Body);
 			var account = doc.RootElement.GetProperty("account");
 			AccountId = account.GetProperty("id").GetString();
 			Username = account.GetProperty("username").GetString();
@@ -217,7 +214,6 @@ public partial class ApiClient : Node
 		}
 		else
 		{
-			// Token invalid/expired — clear saved session
 			ClearSession();
 			GD.Print("[ApiClient] Resume failed, session cleared.");
 		}
@@ -343,7 +339,7 @@ public partial class ApiClient : Node
 		return await RequestAsync("DELETE", $"/characters/{characterId}");
 	}
 
-	/// <summary>Train a stat (server-authoritative).</summary>
+	/// <summary>Train a stat (server-authoritative with soft cap).</summary>
 	public async Task<ApiResponse> TrainStat(string characterId, string stat, int points = 1)
 	{
 		return await RequestAsync("POST", $"/characters/{characterId}/train", new
@@ -351,6 +347,18 @@ public partial class ApiClient : Node
 			stat,
 			points,
 		});
+	}
+
+	/// <summary>Get training status with EST countdown and RP progress.</summary>
+	public async Task<ApiResponse> GetTrainingStatus(string characterId)
+	{
+		return await RequestAsync("GET", $"/characters/{characterId}/training-status");
+	}
+
+	/// <summary>Report a completed RP session to earn TP (server validates).</summary>
+	public async Task<ApiResponse> CompleteRpSession(string characterId)
+	{
+		return await RequestAsync("POST", $"/characters/{characterId}/rp-session");
 	}
 
 	/// <summary>Check if a character name is available.</summary>

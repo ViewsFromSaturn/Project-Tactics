@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ProjectTactics.Combat;
+using ProjectTactics.Core;
 
 namespace ProjectTactics.UI.Panels;
 
@@ -11,15 +12,15 @@ namespace ProjectTactics.UI.Panels;
 /// all 180 skill tree abilities + 105 spells.
 /// Two main tabs: SKILL TREES | SPELLS
 /// Left sidebar: category filters. Center: scrollable list. Right: detail panel.
+/// Purchases write to GameManager.ActiveLoadout so CharacterSheetPanel sees them.
 /// </summary>
 public partial class AbilityShopPanel : WindowPanel
 {
 	// ═══════════════════════════════════════════════════════════════
-	//  THEME — matches FloatingWindow / Taskade glass design
+	//  THEME
 	// ═══════════════════════════════════════════════════════════════
 
 	static readonly Color BgDark       = new("080812");
-	static readonly Color BgGlass      = new(0.031f, 0.031f, 0.071f, 0.92f);
 	static readonly Color BgCard       = new(0.235f, 0.255f, 0.314f, 0.10f);
 	static readonly Color BgCardHover  = new(0.235f, 0.255f, 0.314f, 0.20f);
 	static readonly Color BgSelected   = new(0.545f, 0.361f, 0.965f, 0.15f);
@@ -37,7 +38,6 @@ public partial class AbilityShopPanel : WindowPanel
 	static readonly Color ColGreen     = new("5CB85C");
 	static readonly Color ColRed       = new("CC4444");
 
-	// Element colors
 	static readonly Dictionary<Element, Color> ElColors = new() {
 		{Element.None, TxDim}, {Element.Fire, new("CC4422")}, {Element.Ice, new("44AADD")},
 		{Element.Lightning, new("DDAA22")}, {Element.Earth, new("887744")},
@@ -52,7 +52,7 @@ public partial class AbilityShopPanel : WindowPanel
 	};
 
 	// ═══════════════════════════════════════════════════════════════
-	//  STATE
+	//  STATE — reads from shared loadout
 	// ═══════════════════════════════════════════════════════════════
 
 	enum Tab { Skills, Spells }
@@ -60,22 +60,21 @@ public partial class AbilityShopPanel : WindowPanel
 
 	// Skill filters
 	SkillTree _selectedTree = SkillTree.Vanguard;
-	SkillSlotType? _slotFilter = null; // null = all
+	SkillSlotType? _slotFilter = null;
 
 	// Spell filters
 	Element _selectedElement = Element.Fire;
-	int _tierFilter = 0; // 0 = all
+	int _tierFilter = 0;
 
 	// Selection
 	SkillDefinition _selectedSkill;
 	SpellDefinition _selectedSpell;
 
-	// Simulated player RPP (replace with GameManager data later)
-	int _playerRpp = 100;
-
-	// Owned abilities (replace with server data later)
-	HashSet<string> _ownedSkills = new();
-	HashSet<string> _ownedSpells = new();
+	// Shared loadout — single source of truth
+	CharacterLoadout Loadout => GameManager.Instance?.ActiveLoadout;
+	int PlayerRpp => Loadout?.Rpp ?? 0;
+	HashSet<string> OwnedSkills => Loadout?.LearnedSkillIds ?? new();
+	HashSet<string> OwnedSpells => Loadout?.LearnedSpellIds ?? new();
 
 	// UI refs
 	VBoxContainer _listContainer;
@@ -112,7 +111,6 @@ public partial class AbilityShopPanel : WindowPanel
 		AddTab("⚔  SKILL TREES", Tab.Skills);
 		AddTab("✦  SPELLS", Tab.Spells);
 
-		// Spacer
 		var spacer = new Control(); spacer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		topBar.AddChild(spacer);
 
@@ -122,10 +120,9 @@ public partial class AbilityShopPanel : WindowPanel
 		var rppHb = new HBoxContainer(); rppHb.AddThemeConstantOverride("separation", 6);
 		rppBox.AddChild(rppHb);
 		Lbl(rppHb, "◈ RPP:", ColGold, 12);
-		_rppLabel = Lbl(rppHb, _playerRpp.ToString(), TxBright, 14, true);
+		_rppLabel = Lbl(rppHb, PlayerRpp.ToString(), TxBright, 14, true);
 		topBar.AddChild(rppBox);
 
-		// Separator
 		AddSep(content);
 
 		// ─── MAIN BODY: Sidebar | List | Detail ───
@@ -135,7 +132,7 @@ public partial class AbilityShopPanel : WindowPanel
 		body.AddThemeConstantOverride("separation", 0);
 		content.AddChild(body);
 
-		// ── LEFT SIDEBAR (category picker) ──
+		// ── LEFT SIDEBAR ──
 		var sidebarScroll = new ScrollContainer();
 		sidebarScroll.CustomMinimumSize = new Vector2(170, 0);
 		sidebarScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
@@ -147,10 +144,9 @@ public partial class AbilityShopPanel : WindowPanel
 		_sidebarContainer.AddThemeConstantOverride("separation", 2);
 		sidebarScroll.AddChild(_sidebarContainer);
 
-		// Vertical separator
 		AddVSep(body);
 
-		// ── CENTER LIST (scrollable ability rows) ──
+		// ── CENTER LIST ──
 		var listScroll = new ScrollContainer();
 		listScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		listScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
@@ -162,10 +158,9 @@ public partial class AbilityShopPanel : WindowPanel
 		_listContainer.AddThemeConstantOverride("separation", 1);
 		listScroll.AddChild(_listContainer);
 
-		// Vertical separator
 		AddVSep(body);
 
-		// ── RIGHT DETAIL PANEL ──
+		// ── RIGHT DETAIL ──
 		var detailScroll = new ScrollContainer();
 		detailScroll.CustomMinimumSize = new Vector2(280, 0);
 		detailScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
@@ -184,7 +179,6 @@ public partial class AbilityShopPanel : WindowPanel
 		_detailContainer.AddThemeConstantOverride("separation", 6);
 		detailMargin.AddChild(_detailContainer);
 
-		// Initial populate
 		RebuildSidebar();
 		RebuildList();
 		ShowEmptyDetail();
@@ -229,21 +223,14 @@ public partial class AbilityShopPanel : WindowPanel
 		_activeTab = tab;
 		_selectedSkill = null;
 		_selectedSpell = null;
-
-		// Rebuild tab buttons
-		foreach (var child in _tabBar.GetChildren())
-			if (child is Button b) b.QueueFree();
-		// Defer to avoid modifying during iteration
-		CallDeferred(MethodName.RebuildTabs);
+		CallDeferred(nameof(RebuildTabs));
 	}
 
 	void RebuildTabs()
 	{
-		// Clear existing
 		foreach (var c in _tabBar.GetChildren()) (c as Node)?.QueueFree();
 		AddTab("⚔  SKILL TREES", Tab.Skills);
 		AddTab("✦  SPELLS", Tab.Spells);
-
 		RebuildSidebar();
 		RebuildList();
 		ShowEmptyDetail();
@@ -286,7 +273,7 @@ public partial class AbilityShopPanel : WindowPanel
 				_sidebarContainer.AddChild(btn);
 			}
 		}
-		else // Spells
+		else
 		{
 			Lbl(_sidebarContainer, "ELEMENTS", ColGold, 11, true);
 			AddSep(_sidebarContainer);
@@ -296,7 +283,8 @@ public partial class AbilityShopPanel : WindowPanel
 			{
 				string icon = ElIcons.GetValueOrDefault(el, "◇");
 				var btn = MakeSidebarBtn($"{icon} {el}", el == _selectedElement);
-				btn.AddThemeColorOverride("font_color", el == _selectedElement ? TxBright : ElColors.GetValueOrDefault(el, TxPrimary));
+				btn.AddThemeColorOverride("font_color", el == _selectedElement ?
+					TxBright : ElColors.GetValueOrDefault(el, TxPrimary));
 				var e = el;
 				btn.Pressed += () => { _selectedElement = e; RebuildSidebar(); RebuildList(); };
 				_sidebarContainer.AddChild(btn);
@@ -335,7 +323,6 @@ public partial class AbilityShopPanel : WindowPanel
 			if (_slotFilter.HasValue)
 				skills = skills.Where(s => s.Slot == _slotFilter.Value).ToList();
 
-			// Header
 			var header = MakeListHeader();
 			AddListHeaderCell(header, "Name", 200);
 			AddListHeaderCell(header, "Type", 60);
@@ -374,9 +361,10 @@ public partial class AbilityShopPanel : WindowPanel
 	}
 
 	// ─── Skill Row ──────────────────────────────────────────────
+
 	Control BuildSkillRow(SkillDefinition sk)
 	{
-		bool owned = _ownedSkills.Contains(sk.Id);
+		bool owned = OwnedSkills.Contains(sk.Id);
 		bool selected = _selectedSkill?.Id == sk.Id;
 		Color rowBg = selected ? BgSelected : Colors.Transparent;
 
@@ -388,7 +376,6 @@ public partial class AbilityShopPanel : WindowPanel
 		row.AddThemeStyleboxOverride("panel", rowStyle);
 		row.CustomMinimumSize = new Vector2(0, 28);
 
-		// Make clickable
 		row.MouseFilter = Control.MouseFilterEnum.Stop;
 		row.GuiInput += (ev) => {
 			if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
@@ -405,12 +392,10 @@ public partial class AbilityShopPanel : WindowPanel
 		hbox.MouseFilter = Control.MouseFilterEnum.Ignore;
 		row.AddChild(hbox);
 
-		// Slot icon
 		string slotIcon = sk.Slot == SkillSlotType.Active ? "⚔" : sk.Slot == SkillSlotType.Passive ? "◈" : "⟐";
 		Color slotColor = sk.Slot == SkillSlotType.Active ? ColStamina :
 			sk.Slot == SkillSlotType.Passive ? ColAether : ColBoth;
 
-		// Name (with owned indicator)
 		string nameStr = owned ? $"✓ {sk.Name}" : sk.Name;
 		Color nameCol = owned ? ColGreen : TxPrimary;
 		LblFixed(hbox, nameStr, nameCol, 11, 200);
@@ -426,9 +411,10 @@ public partial class AbilityShopPanel : WindowPanel
 	}
 
 	// ─── Spell Row ──────────────────────────────────────────────
+
 	Control BuildSpellRow(SpellDefinition sp)
 	{
-		bool owned = _ownedSpells.Contains(sp.Id);
+		bool owned = OwnedSpells.Contains(sp.Id);
 		bool selected = _selectedSpell?.Id == sp.Id;
 		Color rowBg = selected ? BgSelected : Colors.Transparent;
 
@@ -486,12 +472,11 @@ public partial class AbilityShopPanel : WindowPanel
 	void ShowSkillDetail(SkillDefinition sk)
 	{
 		ClearChildren(_detailContainer);
-		bool owned = _ownedSkills.Contains(sk.Id);
+		bool owned = OwnedSkills.Contains(sk.Id);
 
-		// Title
 		Lbl(_detailContainer, sk.Name, TxBright, 16, true);
 
-		// Tags row
+		// Tags
 		var tags = new HBoxContainer();
 		tags.AddThemeConstantOverride("separation", 6);
 		_detailContainer.AddChild(tags);
@@ -547,14 +532,13 @@ public partial class AbilityShopPanel : WindowPanel
 		if (owned)
 		{
 			var ownedPanel = MakeCardPanel();
-			var ownedLbl = Lbl(ownedPanel, "✓  LEARNED", ColGreen, 12, true);
+			Lbl(ownedPanel, "✓  LEARNED", ColGreen, 12, true);
 			_detailContainer.AddChild(ownedPanel);
 		}
 		else
 		{
-			// RPP cost for skills: 5 × tier
 			int rppCost = sk.Tier * 5;
-			bool canAfford = _playerRpp >= rppCost;
+			bool canAfford = PlayerRpp >= rppCost;
 
 			var costRow = new HBoxContainer();
 			costRow.AddThemeConstantOverride("separation", 8);
@@ -589,13 +573,12 @@ public partial class AbilityShopPanel : WindowPanel
 	void ShowSpellDetail(SpellDefinition sp)
 	{
 		ClearChildren(_detailContainer);
-		bool owned = _ownedSpells.Contains(sp.Id);
+		bool owned = OwnedSpells.Contains(sp.Id);
 
-		// Title with element icon
 		string icon = ElIcons.GetValueOrDefault(sp.Element, "◇");
 		Lbl(_detailContainer, $"{icon}  {sp.Name}", ElColors.GetValueOrDefault(sp.Element, TxBright), 16, true);
 
-		// Tags row
+		// Tags
 		var tags = new HBoxContainer();
 		tags.AddThemeConstantOverride("separation", 6);
 		_detailContainer.AddChild(tags);
@@ -606,7 +589,6 @@ public partial class AbilityShopPanel : WindowPanel
 
 		AddSep(_detailContainer);
 
-		// Description
 		var descLabel = new Label();
 		descLabel.Text = sp.Description;
 		descLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
@@ -619,7 +601,6 @@ public partial class AbilityShopPanel : WindowPanel
 
 		AddSep(_detailContainer);
 
-		// Stats grid
 		Lbl(_detailContainer, "◆ SPELL DATA", TxSecondary, 10, true);
 		var grid = new GridContainer();
 		grid.Columns = 2;
@@ -630,28 +611,14 @@ public partial class AbilityShopPanel : WindowPanel
 		AddStatRow(grid, "Aether Cost", sp.AetherCost.ToString(), ColAether);
 		AddStatRow(grid, "RT Cost", $"+{sp.RtCost}", TxPrimary);
 		if (sp.Power > 0) AddStatRow(grid, "Power", sp.Power.ToString(), TxBright);
-		string rangeStr = sp.RangeMin == sp.RangeMax ? sp.RangeMax.ToString() : $"{sp.RangeMin}–{sp.RangeMax}";
+		string rangeStr = sp.RangeMin == sp.RangeMax ? sp.RangeMax.ToString() : $"{sp.RangeMin}-{sp.RangeMax}";
 		AddStatRow(grid, "Range", rangeStr, TxPrimary);
 		AddStatRow(grid, "Target", sp.Target.ToString(), TxPrimary);
 		if (sp.AreaSize > 0) AddStatRow(grid, "Area", $"Diamond({sp.AreaSize})", TxPrimary);
-		AddStatRow(grid, "Cast Type", sp.CastType.ToString(), TxSecondary);
+		AddStatRow(grid, "Cast Type", CastTypeShort(sp.CastType), TxSecondary);
 
 		AddSep(_detailContainer);
 
-		// Stat requirement
-		Lbl(_detailContainer, "◆ REQUIREMENTS", TxSecondary, 10, true);
-		var reqGrid = new GridContainer();
-		reqGrid.Columns = 2;
-		reqGrid.AddThemeConstantOverride("h_separation", 16);
-		reqGrid.AddThemeConstantOverride("v_separation", 2);
-		_detailContainer.AddChild(reqGrid);
-
-		AddStatRow(reqGrid, $"{sp.StatReq} Required", sp.StatReqValue.ToString(), ColGold);
-		AddStatRow(reqGrid, "RPP Cost", sp.RppCost.ToString(), ColGold);
-
-		AddSep(_detailContainer);
-
-		// Purchase / Status
 		if (owned)
 		{
 			var ownedPanel = MakeCardPanel();
@@ -660,16 +627,17 @@ public partial class AbilityShopPanel : WindowPanel
 		}
 		else
 		{
-			bool canAfford = _playerRpp >= sp.RppCost;
+			int rppCost = sp.RppCost;
+			bool canAfford = PlayerRpp >= rppCost;
 
 			var costRow = new HBoxContainer();
 			costRow.AddThemeConstantOverride("separation", 8);
 			_detailContainer.AddChild(costRow);
 			Lbl(costRow, "Cost:", TxSecondary, 11);
-			Lbl(costRow, $"{sp.RppCost} RPP", canAfford ? ColGold : ColRed, 11, true);
+			Lbl(costRow, $"{rppCost} RPP", canAfford ? ColGold : ColRed, 11, true);
 
 			var buyBtn = new Button();
-			buyBtn.Text = canAfford ? $"LEARN  ({sp.RppCost} RPP)" : "INSUFFICIENT RPP";
+			buyBtn.Text = canAfford ? $"LEARN  ({rppCost} RPP)" : "INSUFFICIENT RPP";
 			buyBtn.Disabled = !canAfford;
 			buyBtn.CustomMinimumSize = new Vector2(250, 36);
 			buyBtn.AddThemeFontSizeOverride("font_size", 12);
@@ -693,31 +661,23 @@ public partial class AbilityShopPanel : WindowPanel
 	}
 
 	// ═══════════════════════════════════════════════════════════════
-	//  PURCHASE ACTIONS
+	//  PURCHASE — writes to shared CharacterLoadout
 	// ═══════════════════════════════════════════════════════════════
 
 	void PurchaseSkill(SkillDefinition sk, int cost)
 	{
-		if (_playerRpp < cost) return;
-		_playerRpp -= cost;
-		_ownedSkills.Add(sk.Id);
-		_rppLabel.Text = _playerRpp.ToString();
-
-		// TODO: Send to server — POST /api/skills/learn { skill_id, character_id }
-
+		if (Loadout == null || !Loadout.LearnSkill(sk.Id, cost)) return;
+		_rppLabel.Text = Loadout.Rpp.ToString();
+		GD.Print($"[AbilityShop] Learned skill: {sk.Name} ({sk.Id}) for {cost} RPP");
 		RebuildList();
 		ShowSkillDetail(sk);
 	}
 
 	void PurchaseSpell(SpellDefinition sp)
 	{
-		if (_playerRpp < sp.RppCost) return;
-		_playerRpp -= sp.RppCost;
-		_ownedSpells.Add(sp.Id);
-		_rppLabel.Text = _playerRpp.ToString();
-
-		// TODO: Send to server — POST /api/spells/learn { spell_id, character_id }
-
+		if (Loadout == null || !Loadout.LearnSpell(sp.Id, sp.RppCost)) return;
+		_rppLabel.Text = Loadout.Rpp.ToString();
+		GD.Print($"[AbilityShop] Learned spell: {sp.Name} ({sp.Id}) for {sp.RppCost} RPP");
 		RebuildList();
 		ShowSpellDetail(sp);
 	}

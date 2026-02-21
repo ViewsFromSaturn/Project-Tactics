@@ -30,6 +30,9 @@ public partial class GameManager : Node
 	public string ActiveCharacterId { get; private set; } = "";
 	public string PendingSlot { get; set; } = "1";
 
+	// ─── SHARED LOADOUT (skills, spells, equipment, inventory) ──
+	public CharacterLoadout ActiveLoadout { get; private set; }
+
 	public override void _Ready()
 	{
 		if (Instance != null) { QueueFree(); return; }
@@ -56,6 +59,14 @@ public partial class GameManager : Node
 	{
 		ActiveCharacter = data;
 		ActiveCharacterId = characterId;
+
+		// Fix -1 defaults → set to max
+		data.InitializeCombatState();
+		RaceData.ApplyRacePassives(data);
+
+		// Create fresh loadout (or load from server later)
+		ActiveLoadout = new CharacterLoadout();
+
 		GD.Print($"[GameManager] Loaded: {data.CharacterName} (ID: {characterId})");
 	}
 

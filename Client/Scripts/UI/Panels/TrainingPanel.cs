@@ -1,24 +1,38 @@
 using Godot;
 using System.Text.Json;
 using System.Collections.Generic;
+using ProjectTactics.Systems;
 
 namespace ProjectTactics.UI.Panels;
 
+/// <summary>
+/// Training panel — allocate banked TP to stats.
+/// Shows 12:00 PM EST countdown, soft cap costs, RP session progress.
+/// All actual training goes through server API (cheat-proof).
+/// </summary>
 public partial class TrainingPanel : WindowPanel
 {
 	private VBoxContainer _trainingContent;
 	private Label _tpBadge;
 	private Label _feedbackLabel;
+	private Label _countdownLabel;
+	private Label _rpProgressLabel;
 	private Button _applyBtn;
 
 	private readonly Dictionary<string, int> _pendingPoints = new();
+	private readonly Dictionary<string, Label> _statValueLabels = new();
+	private readonly Dictionary<string, Label> _efficiencyLabels = new();
+	private readonly Dictionary<string, Label> _costLabels = new();
 	private int _pendingTpCost = 0;
 	private bool _applyingBatch = false;
+
+	// Countdown timer
+	private double _countdownTimer = 0;
 
 	public TrainingPanel()
 	{
 		WindowTitle = "Daily Training";
-		DefaultSize = new Vector2(340, 480);
+		DefaultSize = new Vector2(360, 520);
 		DefaultPosition = new Vector2(460, 60);
 	}
 
@@ -38,8 +52,31 @@ public partial class TrainingPanel : WindowPanel
 	public override void OnOpen()
 	{
 		base.OnOpen();
+		// Client-side reset check (server is authoritative, this is just for display)
+		var p = Core.GameManager.Instance?.ActiveCharacter;
+		if (p != null)
+		{
+			var trainer = new DailyTraining();
+			trainer.TryDailyReset(p);
+		}
 		RebuildTraining();
 	}
+
+	public override void _Process(double delta)
+	{
+		// Update countdown every second
+		_countdownTimer += delta;
+		if (_countdownTimer >= 1.0 && _countdownLabel != null)
+		{
+			_countdownTimer = 0;
+			int secs = DailyTraining.SecondsUntilReset();
+			_countdownLabel.Text = $"Reset in {DailyTraining.FormatCountdown(secs)}";
+		}
+	}
+
+	// ═════════════════════════════════════════════════════════
+	//  BUILD
+	// ═════════════════════════════════════════════════════════
 
 	private void RebuildTraining()
 	{
@@ -49,11 +86,16 @@ public partial class TrainingPanel : WindowPanel
 		_pendingTpCost = 0;
 		_statValueLabels.Clear();
 		_efficiencyLabels.Clear();
+		_costLabels.Clear();
 
 		var p = Core.GameManager.Instance?.ActiveCharacter;
-		if (p == null) { _trainingContent.AddChild(PlaceholderText("No character loaded.")); return; }
+		if (p == null)
+		{
+			_trainingContent.AddChild(PlaceholderText("No character loaded."));
+			return;
+		}
 
-		// ═══ HEADER ═══
+		// ═══ HEADER: Title + TP Badge ═══
 		var headerRow = new HBoxContainer();
 		headerRow.AddThemeConstantOverride("separation", 6);
 		_trainingContent.AddChild(headerRow);
@@ -69,13 +111,46 @@ public partial class TrainingPanel : WindowPanel
 		_tpBadge = UITheme.CreateNumbers($"{p.TrainingPointsBank} TP", 12, UITheme.Accent);
 		headerRow.AddChild(_tpBadge);
 
+		// ═══ EST COUNTDOWN + RP PROGRESS ═══
+		var infoRow = new HBoxContainer();
+		infoRow.AddThemeConstantOverride("separation", 4);
+		_trainingContent.AddChild(infoRow);
+
+		int secs = DailyTraining.SecondsUntilReset();
+		_countdownLabel = UITheme.CreateDim($"Reset in {DailyTraining.FormatCountdown(secs)}", 10);
+		_countdownLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		infoRow.AddChild(_countdownLabel);
+
+		int dailyCap = p.DailyTpCap;
+		int dailyEarned = p.DailyTpEarned;
+		string rpText = $"RP: {dailyEarned}/{dailyCap} earned today";
+		Color rpColor = dailyEarned >= dailyCap ? UITheme.AccentGreen : UITheme.TextSecondary;
+		_rpProgressLabel = UITheme.CreateBody(rpText, 10, rpColor);
+		infoRow.AddChild(_rpProgressLabel);
+
+		// Feedback label
 		_feedbackLabel = UITheme.CreateBody("", 10, UITheme.Accent);
 		_trainingContent.AddChild(_feedbackLabel);
 
 		_trainingContent.AddChild(Spacer(4));
 		_trainingContent.AddChild(ThinSeparator());
 
-		// ═══ STAT ROWS — compact single-line each ═══
+		// ═══ LEVEL + STATS INFO ═══
+		var levelRow = new HBoxContainer();
+		levelRow.AddThemeConstantOverride("separation", 4);
+		_trainingContent.AddChild(levelRow);
+
+		var lvlLabel = UITheme.CreateBody($"Character Level: {p.CharacterLevel}", 11, UITheme.TextSecondary);
+		lvlLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		levelRow.AddChild(lvlLabel);
+
+		int lowest = GetLowestStat(p);
+		var lowLabel = UITheme.CreateDim($"Lowest stat: {lowest}", 10);
+		levelRow.AddChild(lowLabel);
+
+		_trainingContent.AddChild(Spacer(2));
+
+		// ═══ STAT ROWS ═══
 		AddStatRow("Strength", "STR", "strength", p.Strength, p);
 		AddStatRow("Vitality", "VIT", "vitality", p.Vitality, p);
 		AddStatRow("Agility", "AGI", "agility", p.Agility, p);
@@ -83,32 +158,36 @@ public partial class TrainingPanel : WindowPanel
 		AddStatRow("Mind", "MND", "mind", p.Mind, p);
 		AddStatRow("Ether Control", "ETH", "ether_control", p.EtherControl, p);
 
-		// ═══ SOFT CAP INFO ═══
+		// ═══ SOFT CAP LEGEND ═══
 		_trainingContent.AddChild(Spacer(4));
-		var capInfo = UITheme.CreateDim("Soft caps apply 5+ points above your lowest stat.", 10);
+		var capInfo = UITheme.CreateDim(
+			"Soft cap: gap 0-9 = 1 TP, gap 10-19 = 2 TP, gap 20+ = 4 TP per point.", 10);
 		capInfo.AutowrapMode = TextServer.AutowrapMode.Word;
 		_trainingContent.AddChild(capInfo);
 
+		var carryInfo = UITheme.CreateDim("Unspent TP carries over between days.", 10);
+		_trainingContent.AddChild(carryInfo);
+
 		// ═══ APPLY BUTTON ═══
 		_trainingContent.AddChild(Spacer(6));
-		_applyBtn = UITheme.CreatePrimaryButton($"Apply Training (0 TP)", 12);
+		_applyBtn = UITheme.CreatePrimaryButton("Apply Training (0 TP)", 12);
 		_applyBtn.CustomMinimumSize = new Vector2(0, 36);
 		_applyBtn.Disabled = true;
 		_applyBtn.Pressed += ExecuteTrain;
 		_trainingContent.AddChild(_applyBtn);
 	}
 
-	private readonly Dictionary<string, Label> _statValueLabels = new();
-	private readonly Dictionary<string, Label> _efficiencyLabels = new();
+	// ═════════════════════════════════════════════════════════
+	//  STAT ROW
+	// ═════════════════════════════════════════════════════════
 
 	private void AddStatRow(string name, string abbr, string statKey, int value, Core.PlayerData p)
 	{
-		// Each stat: one main row + efficiency subtitle, separated by thin line
 		var card = new VBoxContainer();
 		card.AddThemeConstantOverride("separation", 0);
 		_trainingContent.AddChild(card);
 
-		// Main row: Name (ABBR)   value   [+]
+		// Main row: Name (ABBR)   value   cost   [+]
 		var row = new HBoxContainer();
 		row.AddThemeConstantOverride("separation", 4);
 		row.CustomMinimumSize = new Vector2(0, 32);
@@ -129,6 +208,7 @@ public partial class TrainingPanel : WindowPanel
 		spacer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
 		row.AddChild(spacer);
 
+		// Value
 		var valLabel = new Label();
 		valLabel.Text = value.ToString();
 		valLabel.AddThemeFontSizeOverride("font_size", 18);
@@ -139,13 +219,14 @@ public partial class TrainingPanel : WindowPanel
 		row.AddChild(valLabel);
 		_statValueLabels[statKey] = valLabel;
 
+		// + Button
 		var plusBtn = UITheme.CreateGhostButton("+", 16, UITheme.Accent);
 		plusBtn.CustomMinimumSize = new Vector2(28, 28);
 		string capturedKey = statKey;
 		plusBtn.Pressed += () => OnPlusPressed(capturedKey);
 		row.AddChild(plusBtn);
 
-		// Efficiency label below
+		// Efficiency + cost label below
 		var effLabel = new Label();
 		UpdateEfficiencyLabel(effLabel, value, p);
 		card.AddChild(effLabel);
@@ -159,9 +240,24 @@ public partial class TrainingPanel : WindowPanel
 		int gap = statValue - GetLowestStat(p);
 		int cost; string effText; Color effColor;
 
-		if (gap >= 20)      { cost = 4; effText = $"⚠ 25% eff ({cost} pt)"; effColor = UITheme.AccentRed; }
-		else if (gap >= 10) { cost = 2; effText = $"⚠ 75% eff ({cost} pt)"; effColor = UITheme.AccentGold; }
-		else                { cost = 1; effText = $"Normal ({cost} pt)"; effColor = UITheme.TextDim; }
+		if (gap >= 20)
+		{
+			cost = 4;
+			effText = $"  ⚠ 25% eff — costs {cost} TP per point";
+			effColor = UITheme.AccentRuby;
+		}
+		else if (gap >= 10)
+		{
+			cost = 2;
+			effText = $"  ⚠ 50% eff — costs {cost} TP per point";
+			effColor = UITheme.AccentGold;
+		}
+		else
+		{
+			cost = 1;
+			effText = $"  100% eff — costs {cost} TP per point";
+			effColor = UITheme.TextDim;
+		}
 
 		label.Text = effText;
 		label.AddThemeFontSizeOverride("font_size", 10);
@@ -169,13 +265,19 @@ public partial class TrainingPanel : WindowPanel
 		if (UITheme.FontBody != null) label.AddThemeFontOverride("font", UITheme.FontBody);
 	}
 
+	// ═════════════════════════════════════════════════════════
+	//  + BUTTON — queue pending allocation
+	// ═════════════════════════════════════════════════════════
+
 	private void OnPlusPressed(string statKey)
 	{
 		var p = Core.GameManager.Instance?.ActiveCharacter;
 		if (p == null) return;
 
-		int currentVal = GetStatValue(statKey, p) + (_pendingPoints.GetValueOrDefault(statKey, 0));
-		int gap = currentVal - GetLowestStat(p);
+		// Calculate cost for this next point (including already-pending)
+		int currentVal = GetStatValue(statKey, p) + _pendingPoints.GetValueOrDefault(statKey, 0);
+		int lowest = GetLowestStat(p);
+		int gap = currentVal - lowest;
 		int cost = gap >= 20 ? 4 : gap >= 10 ? 2 : 1;
 
 		if (_pendingTpCost + cost > p.TrainingPointsBank) return;
@@ -183,13 +285,22 @@ public partial class TrainingPanel : WindowPanel
 		_pendingPoints[statKey] = _pendingPoints.GetValueOrDefault(statKey, 0) + 1;
 		_pendingTpCost += cost;
 
+		// Update value display
 		if (_statValueLabels.TryGetValue(statKey, out var valLabel))
 			valLabel.Text = (GetStatValue(statKey, p) + _pendingPoints[statKey]).ToString();
+
+		// Update efficiency label for next potential click
+		if (_efficiencyLabels.TryGetValue(statKey, out var effLabel))
+			UpdateEfficiencyLabel(effLabel, currentVal + 1, p);
 
 		_applyBtn.Text = $"Apply Training ({_pendingTpCost} TP)";
 		_applyBtn.Disabled = false;
 		_tpBadge.Text = $"{p.TrainingPointsBank - _pendingTpCost} TP";
 	}
+
+	// ═════════════════════════════════════════════════════════
+	//  EXECUTE — server-authoritative training
+	// ═════════════════════════════════════════════════════════
 
 	private async void ExecuteTrain()
 	{
@@ -206,13 +317,17 @@ public partial class TrainingPanel : WindowPanel
 		foreach (var (statKey, points) in _pendingPoints)
 		{
 			if (points <= 0) continue;
-			for (int i = 0; i < points; i++)
+
+			// Send all points for this stat in one request
+			var resp = await api.TrainStat(gm.ActiveCharacterId, statKey, points);
+			if (resp.Success)
 			{
-				var resp = await api.TrainStat(gm.ActiveCharacterId, statKey, 1);
-				if (resp.Success)
+				using var doc = JsonDocument.Parse(resp.Body);
+				var root = doc.RootElement;
+
+				// Server returns the full updated character
+				if (root.TryGetProperty("character", out var c))
 				{
-					using var doc = JsonDocument.Parse(resp.Body);
-					var c = doc.RootElement.GetProperty("character");
 					var p = gm.ActiveCharacter;
 					p.Strength = c.GetProperty("strength").GetInt32();
 					p.Vitality = c.GetProperty("vitality").GetInt32();
@@ -220,19 +335,30 @@ public partial class TrainingPanel : WindowPanel
 					p.Dexterity = c.GetProperty("dexterity").GetInt32();
 					p.Mind = c.GetProperty("mind").GetInt32();
 					p.EtherControl = c.GetProperty("ether_control").GetInt32();
-					p.TrainingPointsBank = c.GetProperty("daily_points_remaining").GetInt32();
+					p.TrainingPointsBank = c.GetProperty("training_points_bank").GetInt32();
 					p.CurrentHp = c.GetProperty("current_hp").GetInt32();
-					p.CurrentAether = c.GetProperty("current_ether").GetInt32();
+					p.CurrentStamina = c.GetProperty("current_stamina").GetInt32();
+					p.CurrentAether = c.GetProperty("current_aether").GetInt32();
+
+					if (c.TryGetProperty("daily_tp_earned", out var dte))
+						p.DailyTpEarned = dte.GetInt32();
+					if (c.TryGetProperty("daily_rp_sessions", out var drs))
+						p.DailyRpSessions = drs.GetInt32();
+					if (c.TryGetProperty("last_reset_date", out var lrd))
+						p.LastResetDate = lrd.GetString();
 				}
-				else
-				{
-					anyFailed = true;
-					_feedbackLabel.Text = resp.Error;
-					_feedbackLabel.AddThemeColorOverride("font_color", UITheme.Error);
-					break;
-				}
+
+				// Log server message
+				if (root.TryGetProperty("message", out var msg))
+					GD.Print($"[Training] {msg.GetString()}");
 			}
-			if (anyFailed) break;
+			else
+			{
+				anyFailed = true;
+				_feedbackLabel.Text = resp.Error;
+				_feedbackLabel.AddThemeColorOverride("font_color", UITheme.AccentRuby);
+				break;
+			}
 		}
 
 		_applyingBatch = false;
@@ -243,6 +369,10 @@ public partial class TrainingPanel : WindowPanel
 		}
 		RebuildTraining();
 	}
+
+	// ═════════════════════════════════════════════════════════
+	//  HELPERS
+	// ═════════════════════════════════════════════════════════
 
 	private int GetLowestStat(Core.PlayerData p)
 	{
