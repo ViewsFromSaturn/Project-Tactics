@@ -424,28 +424,34 @@ public partial class IsoBattleRenderer : Node3D
 		bool isA = unit.Team == UnitTeam.TeamA;
 		Color mainCol = isA ? ColTeamA : ColTeamB;
 
-		// Body
-		var body = new MeshInstance3D();
-		var bodyMesh = new CylinderMesh();
-		bodyMesh.TopRadius = 0.1f;
-		bodyMesh.BottomRadius = 0.13f;
-		bodyMesh.Height = 0.35f;
-		body.Mesh = bodyMesh;
-		body.MaterialOverride = MakeMat(mainCol);
-		body.Position = new Vector3(0, 0.22f, 0);
-		body.CastShadow = GeometryInstance3D.ShadowCastingSetting.On;
-		node.AddChild(body);
-
-		// Head
-		var head = new MeshInstance3D();
-		var headMesh = new SphereMesh();
-		headMesh.Radius = 0.08f;
-		headMesh.Height = 0.16f;
-		head.Mesh = headMesh;
-		head.MaterialOverride = MakeMat(mainCol.Lightened(0.15f));
-		head.Position = new Vector3(0, 0.46f, 0);
-		head.CastShadow = GeometryInstance3D.ShadowCastingSetting.On;
-		node.AddChild(head);
+		// Billboarded sprite from spritesheet
+		var tex = GD.Load<Texture2D>("res://Assets/Sprites/test_base_clean.png");
+		if (tex != null)
+		{
+			var sprite = new Sprite3D();
+			sprite.Name = "Sprite";
+			sprite.Texture = tex;
+			sprite.Hframes = 5;
+			sprite.Vframes = 4;
+			sprite.Frame = 0; // front idle
+			sprite.PixelSize = 0.02f;
+			sprite.Billboard = BaseMaterial3D.BillboardModeEnum.FixedY;
+			sprite.TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest;
+			sprite.Position = new Vector3(0, 1.0f, 0);
+			sprite.CastShadow = GeometryInstance3D.ShadowCastingSetting.On;
+			node.AddChild(sprite);
+		}
+		else
+		{
+			// Fallback cone if sprite not found
+			var body = new MeshInstance3D();
+			var bodyMesh = new CylinderMesh();
+			bodyMesh.TopRadius = 0.1f; bodyMesh.BottomRadius = 0.13f; bodyMesh.Height = 0.35f;
+			body.Mesh = bodyMesh;
+			body.MaterialOverride = MakeMat(mainCol);
+			body.Position = new Vector3(0, 0.22f, 0);
+			node.AddChild(body);
+		}
 
 		// Shadow disc
 		var shadow = new MeshInstance3D();
@@ -483,7 +489,7 @@ public partial class IsoBattleRenderer : Node3D
 		label.FontSize = 28;
 		label.PixelSize = 0.003f;
 		label.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
-		label.Position = new Vector3(0, 0.62f, 0);
+		label.Position = new Vector3(0, 1.6f, 0);
 		label.Modulate = Colors.White;
 		label.OutlineSize = 6;
 		label.OutlineModulate = new Color("000000cc");
@@ -491,7 +497,7 @@ public partial class IsoBattleRenderer : Node3D
 
 		// HP bar
 		var hpBar = BuildHpBar(unit);
-		hpBar.Position = new Vector3(0, 0.55f, 0);
+		hpBar.Position = new Vector3(0, 1.5f, 0);
 		node.AddChild(hpBar);
 
 		var tile = _grid.At(unit.GridPosition);
@@ -542,6 +548,77 @@ public partial class IsoBattleRenderer : Node3D
 			var tile = _grid.At(unit.GridPosition);
 			node.Position = GridToWorld(unit.GridPosition.X, unit.GridPosition.Y, tile?.Height ?? 0);
 		}
+	}
+
+	/// <summary>Rebuild HP bar for a unit after taking damage.</summary>
+	public void RefreshUnitHpBar(BattleUnit unit)
+	{
+		if (!_unitNodes.TryGetValue(unit.CharacterId, out var node)) return;
+
+		// Find and remove old HP bar (it's a Node3D child, not MeshInstance directly)
+		for (int i = node.GetChildCount() - 1; i >= 0; i--)
+		{
+			var child = node.GetChild(i);
+			if (child is Node3D n3d && child is not MeshInstance3D && child is not Sprite3D && child is not Label3D)
+			{
+				child.QueueFree();
+				break; // only one HP bar container
+			}
+		}
+
+		var hpBar = BuildHpBar(unit);
+		hpBar.Position = new Vector3(0, 1.5f, 0);
+		node.AddChild(hpBar);
+	}
+
+	/// <summary>Remove a dead unit's visual from the battlefield.</summary>
+	public void RemoveUnitVisual(BattleUnit unit)
+	{
+		if (_unitNodes.TryGetValue(unit.CharacterId, out var node))
+		{
+			node.QueueFree();
+			_unitNodes.Remove(unit.CharacterId);
+		}
+	}
+
+	/// <summary>Spawn a floating damage number above a unit.</summary>
+	public void SpawnDamageNumber(BattleUnit unit, int damage, bool crit, bool isDodge = false)
+	{
+		if (!_unitNodes.TryGetValue(unit.CharacterId, out var node)) return;
+
+		var label = new Label3D();
+		label.Text = isDodge ? "MISS" : (crit ? $"{damage}!" : damage.ToString());
+		label.FontSize = crit ? 42 : 32;
+		label.PixelSize = 0.003f;
+		label.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
+		label.Modulate = isDodge ? new Color("aaaaaa") : crit ? new Color("ff4444") : new Color("ffcc33");
+		label.OutlineSize = 8;
+		label.OutlineModulate = new Color("000000cc");
+		label.Position = new Vector3(0, 1.8f, 0);
+		node.AddChild(label);
+
+		// Animate: float up + fade out over 1s
+		var tween = CreateTween();
+		tween.SetParallel(true);
+		tween.TweenProperty(label, "position:y", label.Position.Y + 0.6f, 1.0f);
+		tween.TweenProperty(label, "modulate:a", 0f, 1.0f).SetDelay(0.4f);
+		tween.SetParallel(false);
+		tween.TweenCallback(Callable.From(() => label.QueueFree()));
+	}
+
+	/// <summary>Flash a unit's sprite red briefly on hit.</summary>
+	public void FlashUnitHit(BattleUnit unit)
+	{
+		if (!_unitNodes.TryGetValue(unit.CharacterId, out var node)) return;
+
+		var sprite = node.GetNodeOrNull<Sprite3D>("Sprite");
+		if (sprite == null) return;
+
+		var origColor = sprite.Modulate;
+		sprite.Modulate = new Color(1f, 0.3f, 0.3f, 1f);
+
+		var tween = CreateTween();
+		tween.TweenProperty(sprite, "modulate", origColor, 0.25f).SetDelay(0.1f);
 	}
 
 	// ═══════════════════════════════════════════════════════

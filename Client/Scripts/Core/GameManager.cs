@@ -22,6 +22,7 @@ public partial class GameManager : Node
 		public static string CharSelect = "res://Scenes/Login/CharacterSelect.tscn";
 		public static string CharCreate = "res://Scenes/Login/CharacterCreate.tscn";
 		public static string Overworld = "res://Scenes/World/Overworld.tscn";
+		public static string Battle = "res://Scenes/Combat/BattleScene.tscn";
 	}
 
 	// ─── ACTIVE CHARACTER ───────────────────────────────────

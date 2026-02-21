@@ -30,6 +30,7 @@ public class BattleUnit
 	public bool HasMoved;
 	public bool HasActed;
 	public int TilesMoved;
+	public bool IsDefending;
 
 	// ─── BASE STATS (from PlayerData) ────────────────────
 	public int Strength, Vitality, Dexterity, Agility, EtherControl, Mind;

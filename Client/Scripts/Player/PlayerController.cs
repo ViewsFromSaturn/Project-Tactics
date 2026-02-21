@@ -5,11 +5,9 @@ namespace ProjectTactics.Player;
 
 /// <summary>
 /// Player controller for overworld movement.
-/// Handles input, 8-directional movement, basic animation states,
-/// and interaction triggers.
-/// 
-/// IMPORTANT: Checks ChatPanel.IsUiFocused to block movement when
-/// the player is typing in chat, emote box, or settings fields.
+/// Uses Sprite2D with hframes/vframes spritesheet.
+/// Sheet layout: 5 cols × 4 rows
+///   Row 0 = Front (down), Row 1 = Right, Row 2 = Left, Row 3 = Back (up)
 /// </summary>
 public partial class PlayerController : CharacterBody2D
 {
@@ -32,8 +30,22 @@ public partial class PlayerController : CharacterBody2D
 	private bool _canMove = true;
 	private bool _isRunning = false;
 
-	// ─── NODE REFERENCES ────────────────────────────────────────
-	private AnimatedSprite2D _sprite;
+	// ─── SPRITE ANIMATION ───────────────────────────────────────
+	private Sprite2D _sprite;
+	private int _cols = 5;
+	private int _currentRow = 0;     // 0=front, 1=right, 2=left, 3=back
+	private int _currentCol = 0;
+	private float _animTimer = 0f;
+	private float _animSpeed = 0.15f; // seconds per frame
+
+	private int GetRow(string dir) => dir switch
+	{
+		"down"  => 0,
+		"right" => 1,
+		"left"  => 2,
+		"up"    => 3,
+		_ => 0
+	};
 
 	// ═════════════════════════════════════════════════════════════
 	//  LIFECYCLE
@@ -41,7 +53,12 @@ public partial class PlayerController : CharacterBody2D
 
 	public override void _Ready()
 	{
-		_sprite = GetNodeOrNull<AnimatedSprite2D>("Sprite2D");
+		_sprite = GetNodeOrNull<Sprite2D>("Sprite2D");
+		if (_sprite != null)
+		{
+			_cols = _sprite.Hframes;
+			_sprite.Frame = 0;
+		}
 		GD.Print("[PlayerController] Ready.");
 	}
 
@@ -49,10 +66,8 @@ public partial class PlayerController : CharacterBody2D
 	{
 		if (!_canMove) return;
 
-		// ═══ CRITICAL: Block movement when UI text fields are focused ═══
 		if (UI.ChatPanel.IsUiFocused || UI.OverworldHUD.IsAnyTextFieldFocused)
 		{
-			// Decelerate to stop while typing
 			Velocity = Velocity.MoveToward(Vector2.Zero, (float)(Friction * delta));
 			if (Velocity.Length() < 5f)
 			{
@@ -60,7 +75,7 @@ public partial class PlayerController : CharacterBody2D
 				SetMovementState(MovementState.Idle);
 			}
 			MoveAndSlide();
-			UpdateAnimation();
+			UpdateAnimation((float)delta);
 			return;
 		}
 
@@ -86,7 +101,7 @@ public partial class PlayerController : CharacterBody2D
 		}
 
 		MoveAndSlide();
-		UpdateAnimation();
+		UpdateAnimation((float)delta);
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
@@ -133,27 +148,30 @@ public partial class PlayerController : CharacterBody2D
 		EmitSignal(SignalName.MovementStateChanged, (int)newState);
 	}
 
-	private void UpdateAnimation()
+	private void UpdateAnimation(float delta)
 	{
 		if (_sprite == null) return;
 
-		string directionName = GetDirectionName();
-		string stateName = CurrentMovementState switch
-		{
-			MovementState.Idle    => "idle",
-			MovementState.Walking => "walk",
-			MovementState.Running => "run",
-			_ => "idle"
-		};
+		string dirName = GetDirectionName();
+		_currentRow = GetRow(dirName);
 
-		string animName = $"{stateName}_{directionName}";
-
-		if (_sprite.SpriteFrames != null &&
-			_sprite.SpriteFrames.HasAnimation(animName) &&
-			_sprite.Animation != animName)
+		if (CurrentMovementState == MovementState.Idle)
 		{
-			_sprite.Play(animName);
+			_currentCol = 0;
+			_animTimer = 0f;
 		}
+		else
+		{
+			float spd = CurrentMovementState == MovementState.Running ? _animSpeed * 0.6f : _animSpeed;
+			_animTimer += delta;
+			if (_animTimer >= spd)
+			{
+				_animTimer -= spd;
+				_currentCol = (_currentCol + 1) % _cols;
+			}
+		}
+
+		_sprite.Frame = _currentRow * _cols + _currentCol;
 	}
 
 	private string GetDirectionName()

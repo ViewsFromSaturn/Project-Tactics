@@ -2,7 +2,7 @@
 
 [ext_resource type="Texture2D" uid="uid://bbesoeoppixpx" path="res://Assets/Tilesets/grass.png" id="1_ui05c"]
 [ext_resource type="Script" uid="uid://ceolwdwnjobut" path="res://Scripts/Player/PlayerController.cs" id="2_itfjr"]
-[ext_resource type="Texture2D" uid="uid://cxj3atw3dla80" path="res://Assets/Sprites/player.png" id="3_xr6cp"]
+[ext_resource type="Texture2D" uid="uid://dukgy5y6gu346" path="res://Assets/Sprites/test_base_clean.png" id="3_xr6cp"]
 [ext_resource type="Script" uid="uid://beo8elk0rrwu6" path="res://Scripts/Player/CameraController.cs" id="4_g2o7e"]
 [ext_resource type="Script" uid="uid://4rg4dduco6dw" path="res://Scripts/UI/DebugOverlay.cs" id="5_fsjhu"]
 [ext_resource type="Script" uid="uid://bbqs4pr0f08u6" path="res://Scripts/UI/Panels/ChatPanel.cs" id="6_xr6cp"]
@@ -32,6 +32,8 @@ script = ExtResource("2_itfjr")
 
 [node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=928746620]
 texture = ExtResource("3_xr6cp")
+hframes = 5
+vframes = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=1080970924]
 shape = SubResource("RectangleShape2D_xej2q")
@@ -70,12 +72,13 @@ script = ExtResource("6_xr6cp")
 
 [node name="OverworldHUD" type="Control" parent="HUDLayer" unique_id=516237565]
 layout_mode = 3
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -872.0
-offset_top = -503.0
-offset_right = -872.0
-offset_bottom = -503.0
+offset_left = -943.0
+offset_top = -536.0
+offset_right = -943.0
+offset_bottom = -536.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2

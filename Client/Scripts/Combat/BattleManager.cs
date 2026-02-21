@@ -23,7 +23,11 @@ public partial class BattleManager : Node3D
 	Vector2I _turnStartPos;
 	Vector2I _pendingMoveTile = new(-1, -1);
 	List<Vector2I> _pendingMovePath;
+	int _pendingActionRt = 0; // stored RT from combat action, applied at turn end
 	ProjectTactics.UI.ChatPanel _chatPanel;
+
+	// ─── COMBAT STATS ───
+	readonly BattleStats _stats = new();
 
 	// ─── CAMERA ───
 	float _camAngle = -45f;       // horizontal orbit (degrees)
@@ -218,7 +222,22 @@ public partial class BattleManager : Node3D
 		_hud.SetAbilities(AbilityInfo.GetTestAbilities());
 		_hud.SetItems(ItemInfo.GetTestItems());
 
-		var unitA = BattleUnit.CreateDummy("Yumeno", UnitTeam.TeamA, new(1, 6), 5, 10);
+		// ─── PLAYER UNIT (from overworld character) ─────────
+		BattleUnit unitA;
+		var gm = Core.GameManager.Instance;
+		if (gm?.ActiveCharacter != null)
+		{
+			unitA = BattleUnit.FromPlayerData(gm.ActiveCharacter, UnitTeam.TeamA, new(1, 6));
+			GD.Print($"[Battle] Loaded player: {unitA.Name} HP:{unitA.MaxHp} STA:{unitA.MaxStamina} AE:{unitA.MaxAether}");
+		}
+		else
+		{
+			// Fallback dummy if no character loaded (editor testing)
+			unitA = BattleUnit.CreateDummy("Player", UnitTeam.TeamA, new(1, 6), 5, 10);
+			GD.Print("[Battle] No active character — using dummy.");
+		}
+
+		// ─── ENEMY UNIT (dummy for now, will be NPC/PvP later) ──
 		var unitB = BattleUnit.CreateDummy("Enemy", UnitTeam.TeamB, new(6, 1), 5, 20);
 
 		foreach (var u in new[] { unitA, unitB })
@@ -247,7 +266,15 @@ public partial class BattleManager : Node3D
 		AddChild(we);
 
 		_turnQueue.InitializeTurnOrder();
-		NextTurn();
+
+		// Record battle start time
+		_stats.BattleStartTime = (float)Time.GetTicksMsec() / 1000f;
+
+		// Play intro animation, then start first turn
+		string playerName = _units.Find(u => u.Team == UnitTeam.TeamA)?.Name ?? "PLAYER";
+		var intro = new BattleIntro(playerName.ToUpper(), "ENEMY FORCES");
+		AddChild(intro);
+		intro.IntroFinished += () => NextTurn();
 	}
 
 	// ═══════════════════════════════════════════════════════
@@ -258,18 +285,29 @@ public partial class BattleManager : Node3D
 	{
 		_turnQueue.AdvanceTime();
 		_activeUnit = _turnQueue.GetActiveUnit();
+		_stats.TurnsElapsed++;
 
-		if (_activeUnit == null || _turnQueue.GetWinningTeam() != null)
+		var winner = _turnQueue.GetWinningTeam();
+		if (_activeUnit == null || winner != null)
 		{
 			_state = BattleState.BattleOver;
 			_hud.HideCommandMenu();
-			_hud.SetPhaseText($"BATTLE OVER — {_turnQueue.GetWinningTeam()} WINS");
+			_renderer.ClearAllHighlights();
+
+			bool playerWon = winner == UnitTeam.TeamA;
+			_hud.SetPhaseText(playerWon ? "⚔ VICTORY" : "⚔ DEFEAT");
+
+			var resultType = playerWon ? BattleReport.BattleResult.Victory : BattleReport.BattleResult.Defeat;
+			var timer = GetTree().CreateTimer(1.5f);
+			timer.Timeout += () => ShowBattleReport(resultType);
 			return;
 		}
 
 		_activeUnit.HasMoved = false;
 		_activeUnit.HasActed = false;
 		_activeUnit.TilesMoved = 0;
+		_activeUnit.IsDefending = false;
+		_pendingActionRt = 0;
 		_turnStartPos = _activeUnit.GridPosition;
 
 		// v3.0: Apply per-turn regen at start of unit's turn
@@ -305,6 +343,35 @@ public partial class BattleManager : Node3D
 		NextTurn();
 	}
 
+	/// <summary>Called after a combat action (attack/ability/item/defend). 
+	/// Stores RT, returns to menu if move still available, else ends turn.</summary>
+	void CompleteCombatAction(int actionRt)
+	{
+		_activeUnit.HasActed = true;
+		_pendingActionRt = actionRt;
+		_renderer.ClearAllHighlights();
+
+		if (_activeUnit.HasMoved)
+		{
+			// Both actions spent → end turn
+			EndTurnWithAction(_pendingActionRt);
+		}
+		else
+		{
+			// Can still move → return to command menu
+			ShowCommandMenu();
+		}
+	}
+
+	/// <summary>Called after move confirm. Checks if turn should auto-end.</summary>
+	void CheckAutoEndTurn()
+	{
+		if (_activeUnit.HasMoved && _activeUnit.HasActed)
+			EndTurnWithAction(_pendingActionRt);
+		else
+			ShowCommandMenu();
+	}
+
 	// ═══════════════════════════════════════════════════════
 	//  HUD HANDLERS
 	// ═══════════════════════════════════════════════════════
@@ -334,19 +401,24 @@ public partial class BattleManager : Node3D
 				break;
 
 			case "Defend":
-				_activeUnit.HasActed = true;
+				_activeUnit.IsDefending = true;
 				CombatLog($"🛡 {_activeUnit.Name} defends. (DEF +50% until next turn)");
-				EndTurnWithAction(ActionRt.Defend);
+				CompleteCombatAction(ActionRt.Defend);
 				break;
 
 			case "End Turn":
 				CombatLog($"◎ {_activeUnit.Name} ends turn.");
-				EndTurnWithAction(ActionRt.Wait);
+				EndTurnWithAction(_pendingActionRt);
 				break;
 
 			case "Flee":
-				CombatLog($"↺ {_activeUnit.Name} attempts to flee!");
-				EndTurnWithAction(ActionRt.Wait);
+				CombatLog($"↺ {_activeUnit.Name} flees the battle!");
+				_state = BattleState.BattleOver;
+				_hud.HideCommandMenu();
+				_renderer.ClearAllHighlights();
+				_hud.SetPhaseText("⚔ FLED FROM BATTLE");
+				var fleeTimer = GetTree().CreateTimer(1.5f);
+				fleeTimer.Timeout += () => ShowBattleReport(BattleReport.BattleResult.Fled);
 				break;
 		}
 	}
@@ -376,6 +448,7 @@ public partial class BattleManager : Node3D
 		if (targetTile == null) return;
 
 		int moved = _pendingMovePath?.Count ?? 0;
+		_stats.RecordMove(moved);
 		_grid.At(_activeUnit.GridPosition).Occupant = null;
 		_activeUnit.GridPosition = _pendingMoveTile;
 		targetTile.Occupant = _activeUnit;
@@ -388,7 +461,7 @@ public partial class BattleManager : Node3D
 		_pendingMovePath = null;
 		_renderer.ClearMovePreview();
 		_hud.HideMoveConfirm();
-		ShowCommandMenu();
+		CheckAutoEndTurn();
 	}
 
 	void CancelMovePreview()
@@ -410,19 +483,21 @@ public partial class BattleManager : Node3D
 			CombatLog($"✗ {_activeUnit.Name} can't afford {ab.Name}! ({ab.CostString()})");
 			return;
 		}
-		_activeUnit.HasActed = true;
 		_activeUnit.SpendResource(ab);
+		if (ab.ResourceType == ResourceType.Stamina || ab.ResourceType == ResourceType.Both)
+			_stats.RecordStaminaSpent(ab.StaminaCost);
+		if (ab.ResourceType == ResourceType.Aether || ab.ResourceType == ResourceType.Both)
+			_stats.RecordAetherSpent(ab.AetherCost);
 		CombatLog($"✦ {_activeUnit.Name} uses {ab.Name}! (-{ab.CostString()})");
-		EndTurnWithAction(ab.RtCost);
+		CompleteCombatAction(ab.RtCost);
 	}
 
 	void OnItemSelected(int index)
 	{
 		var items = ItemInfo.GetTestItems();
 		if (index < 0 || index >= items.Count) return;
-		_activeUnit.HasActed = true;
 		CombatLog($"◆ {_activeUnit.Name} uses {items[index].Name}!");
-		EndTurnWithAction(items[index].RtCost);
+		CompleteCombatAction(items[index].RtCost);
 	}
 
 	void OnTileRightClicked(int x, int y)
@@ -439,7 +514,7 @@ public partial class BattleManager : Node3D
 	{
 		var pos = new Vector2I(x, y);
 		var tile = _grid.At(pos);
-		if (tile == null || _activeUnit == null) return;
+		if (tile == null || _activeUnit == null || _state == BattleState.BattleOver) return;
 
 		if (_state == BattleState.MovePhase)
 		{
@@ -482,9 +557,8 @@ public partial class BattleManager : Node3D
 				{
 					if (t.GridPos == pos)
 					{
-						_activeUnit.HasActed = true;
 						DoAttack(_activeUnit, tile.Occupant);
-						EndTurnWithAction(ActionRt.MediumAttack);
+						CompleteCombatAction(ActionRt.MediumAttack);
 						return;
 					}
 				}
@@ -515,14 +589,18 @@ public partial class BattleManager : Node3D
 	void DoAttack(BattleUnit atk, BattleUnit def)
 	{
 		float raw = atk.Atk * 1.5f;
-		int dmg = (int)Mathf.Max(raw - def.Def * 0.8f, 1);
+		float defValue = def.Def * (def.IsDefending ? 1.5f : 1.0f);
+		int dmg = (int)Mathf.Max(raw - defValue * 0.8f, 1);
 		dmg = Mathf.Min(dmg, (int)(def.MaxHp * 0.6f));
 
 		float dodge = Mathf.Clamp((def.Avd * 0.4f + def.Agility * 0.2f - atk.Acc * 0.3f) / 100f, 0f, 0.75f);
+		if (def.IsDefending) dodge = Mathf.Min(dodge + 0.15f, 0.75f);
 		var rng = new System.Random();
 		if (rng.NextDouble() < dodge)
 		{
 			CombatLog($"↺ {def.Name} dodged {atk.Name}'s attack!");
+			_renderer.SpawnDamageNumber(def, 0, false, isDodge: true);
+			_stats.RecordDodge(def);
 			return;
 		}
 
@@ -530,11 +608,53 @@ public partial class BattleManager : Node3D
 		if (crit) dmg = (int)(dmg * 1.5f);
 		def.CurrentHp = Mathf.Max(0, def.CurrentHp - dmg);
 
+		// Track stats
+		_stats.RecordDamage(atk, dmg, "Basic Strike", crit);
+
 		string critTag = crit ? " CRIT!" : "";
 		CombatLog($"⚔ {atk.Name} attacks {def.Name} with Basic Strike →{critTag} {dmg} dmg ({def.CurrentHp}/{def.MaxHp} HP)");
 
+		// Visual feedback
+		_renderer.SpawnDamageNumber(def, dmg, crit);
+		_renderer.FlashUnitHit(def);
+		_renderer.RefreshUnitHpBar(def);
+		_hud.UpdateUnitInfo(_activeUnit);
+
 		if (!def.IsAlive)
+		{
 			CombatLog($"💀 {def.Name} has been defeated!");
+			_stats.RecordKill(atk, def);
+
+			// Remove from grid
+			var defTile = _grid.At(def.GridPosition);
+			if (defTile != null) defTile.Occupant = null;
+
+			// Fade out and remove visual after short delay
+			_renderer.RemoveUnitVisual(def);
+		}
+	}
+
+	// ═══════════════════════════════════════════════════════
+	//  BATTLE RESULTS
+	// ═══════════════════════════════════════════════════════
+
+	void ShowBattleReport(BattleReport.BattleResult result)
+	{
+		float now = (float)Time.GetTicksMsec() / 1000f;
+		var gm = Core.GameManager.Instance;
+		var player = new BattleReport.PlayerInfo
+		{
+			Name = gm?.ActiveCharacter?.CharacterName ?? "Player",
+			Race = gm?.ActiveCharacter?.RaceName ?? "",
+			Rank = gm?.ActiveCharacter?.RpRank ?? "Aspirant",
+			SpriteSheetPath = "res://Assets/Sprites/test_base_clean.png"
+		};
+		var reportLayer = BattleReport.Build(result, _stats, player, now, () =>
+		{
+			CombatLog("◎ Returning to overworld...");
+			QueueFree();
+		});
+		AddChild(reportLayer);
 	}
 
 	// ═══════════════════════════════════════════════════════

@@ -114,39 +114,50 @@ public partial class CharacterSelect : Control
 			return;
 		}
 
-		using var doc = JsonDocument.Parse(resp.Body);
-		var root = doc.RootElement;
-		var slots = root.GetProperty("slots");
-
-		// Cache full character data
-		if (root.TryGetProperty("characters", out var chars))
+		try
 		{
-			foreach (var prop in chars.EnumerateObject())
-				_cachedCharacters[prop.Name] = prop.Value.Clone();
-		}
+			using var doc = JsonDocument.Parse(resp.Body);
+			var root = doc.RootElement;
+			var slots = root.GetProperty("slots");
 
-		// Find last played character for Continue button
-		string lastCharId = api.GetLastCharacterId();
-
-		for (int i = 1; i <= MaxSlots; i++)
-		{
-			string key = i.ToString();
-			var slotData = slots.GetProperty(key);
-
-			if (slotData.ValueKind == JsonValueKind.Null)
-				_slotsContainer.AddChild(CreateEmptySlot(i));
-			else
+			// Cache full character data
+			if (root.TryGetProperty("characters", out var chars))
 			{
-				string charId = slotData.GetProperty("id").GetString();
-				string charName = slotData.GetProperty("name").GetString();
-				bool isLast = charId == lastCharId;
-
-				_slotsContainer.AddChild(CreateOccupiedSlot(i, slotData, isLast));
-
-				// Build Continue panel for last played character
-				if (isLast)
-					BuildContinuePanel(charId, charName, slotData);
+				foreach (var prop in chars.EnumerateObject())
+					_cachedCharacters[prop.Name] = prop.Value.Clone();
 			}
+
+			// Find last played character for Continue button
+			string lastCharId = api.GetLastCharacterId();
+
+			for (int i = 1; i <= MaxSlots; i++)
+			{
+				string key = i.ToString();
+				if (!slots.TryGetProperty(key, out var slotData) || slotData.ValueKind == JsonValueKind.Null)
+				{
+					_slotsContainer.AddChild(CreateEmptySlot(i));
+				}
+				else
+				{
+					string charId = slotData.GetProperty("id").GetString();
+					string charName = slotData.GetProperty("name").GetString();
+					bool isLast = charId == lastCharId;
+
+					_slotsContainer.AddChild(CreateOccupiedSlot(i, slotData, isLast));
+
+					if (isLast)
+						BuildContinuePanel(charId, charName, slotData);
+				}
+			}
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CharacterSelect] Error loading characters: {ex.Message}");
+			_loadingLabel.Visible = true;
+			_loadingLabel.Text = "Error loading characters.";
+			// Still show empty slots
+			for (int i = 1; i <= MaxSlots; i++)
+				_slotsContainer.AddChild(CreateEmptySlot(i));
 		}
 	}
 
@@ -210,11 +221,11 @@ public partial class CharacterSelect : Control
 		string rank = data.GetProperty("rp_rank").GetString();
 		int level = data.GetProperty("character_level").GetInt32();
 		int str = data.GetProperty("strength").GetInt32();
-		int spd = data.GetProperty("speed").GetInt32();
+		int vit = data.GetProperty("vitality").GetInt32();
+		int dex = data.GetProperty("dexterity").GetInt32();
 		int agi = data.GetProperty("agility").GetInt32();
-		int end = data.GetProperty("endurance").GetInt32();
-		int sta = data.GetProperty("stamina").GetInt32();
 		int etc = data.GetProperty("ether_control").GetInt32();
+		int mnd = data.GetProperty("mind").GetInt32();
 
 		var borderColor = isLastPlayed ? UITheme.Accent : UITheme.Border;
 		var panel = UITheme.CreatePanel(borderColor: borderColor);
@@ -236,7 +247,7 @@ public partial class CharacterSelect : Control
 		var metaLabel = UITheme.CreateBody($"Lv.{level}  ·  {rank}  ·  {city}", 12, UITheme.TextDim);
 		infoVbox.AddChild(metaLabel);
 
-		var statsText = $"STR {str}   SPD {spd}   AGI {agi}   END {end}   STA {sta}   ETH {etc}";
+		var statsText = $"STR {str}   VIT {vit}   DEX {dex}   AGI {agi}   ETC {etc}   MND {mnd}";
 		var statsLabel = UITheme.CreateNumbers(statsText, 11, UITheme.TextDim);
 		infoVbox.AddChild(statsLabel);
 
