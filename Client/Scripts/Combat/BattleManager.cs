@@ -138,14 +138,26 @@ public partial class BattleManager : Node3D
 		// Restore hidden 2D nodes
 		foreach (var node in _hiddenOverworldNodes)
 		{
-			if (node is Node2D n2d) n2d.Visible = true;
+			if (node is Camera2D cam)
+			{
+				cam.Enabled = true;
+				cam.MakeCurrent();
+			}
+			else if (node is Node2D n2d) n2d.Visible = true;
 			else if (node is TileMapLayer tml) tml.Visible = true;
-			else if (node is Camera2D cam) cam.Enabled = true;
 		}
 		_hiddenOverworldNodes.Clear();
 
 		if (_overworldIdentityBar != null) _overworldIdentityBar.Visible = true;
 		if (_overworldSidebar != null) _overworldSidebar.Visible = true;
+
+		// Force the viewport back to 2D rendering
+		var viewport = GetTree()?.Root;
+		if (viewport != null)
+		{
+			viewport.World3D = null;
+		}
+
 		GD.Print("[Battle] Restored overworld UI");
 	}
 

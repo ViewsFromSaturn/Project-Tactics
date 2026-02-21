@@ -101,6 +101,14 @@ public partial class OverworldHUD : Control
 		if (ev is not InputEventKey key || !key.Pressed || key.Echo) return;
 		if (ChatPanel.IsUiFocused || IsAnyTextFieldFocused) return;
 
+		// Backtick (`) — Admin panel (admin-only)
+		if (key.Keycode == Key.Quoteleft && Networking.ApiClient.Instance?.IsAdmin == true)
+		{
+			ToggleWindow("admin");
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
 		// F5: Enter test battle (overlay on top of overworld)
 		if (key.Keycode == Key.F5)
 		{
@@ -422,6 +430,7 @@ public partial class OverworldHUD : Control
 			"abilities" => new Panels.AbilityShopPanel(),
 			"mentor"    => new Panels.MentorPanel(),
 			"settings"       => new Panels.SettingsPanel(),
+			"admin"          => new Panels.AdminPanel(),
 			"icprofile"      => new Panels.ICProfilePanel(editMode: true),
 			"icprofile_view" => new Panels.ICProfilePanel(editMode: false),
 			_ => null

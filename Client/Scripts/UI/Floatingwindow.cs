@@ -172,21 +172,30 @@ public partial class FloatingWindow : Control
 		titleStyle.BorderColor = UITheme.GlassBorder;
 		titleStyle.BorderWidthBottom = 1;
 		titleStyle.ContentMarginLeft = 16;
-		titleStyle.ContentMarginRight = 16;
-		titleStyle.ContentMarginTop = 12;
-		titleStyle.ContentMarginBottom = 12;
+		titleStyle.ContentMarginRight = 8;
+		titleStyle.ContentMarginTop = 6;
+		titleStyle.ContentMarginBottom = 6;
 		_titleBar.AddThemeStyleboxOverride("panel", titleStyle);
 		vbox.AddChild(_titleBar);
+
+		// Use HBoxContainer so title and close button share space properly
+		var titleRow = new HBoxContainer();
+		titleRow.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+		titleRow.OffsetLeft = 16;
+		titleRow.OffsetRight = -8;
+		titleRow.AddThemeConstantOverride("separation", 8);
+		_titleBar.AddChild(titleRow);
 
 		_titleLabel = new Label();
 		_titleLabel.Text = _title;
 		_titleLabel.AddThemeFontSizeOverride("font_size", 14);
 		_titleLabel.AddThemeColorOverride("font_color", UITheme.TextBright);
+		_titleLabel.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		_titleLabel.VerticalAlignment = VerticalAlignment.Center;
+		_titleLabel.ClipText = true;
 		if (UITheme.FontTitleMedium != null)
 			_titleLabel.AddThemeFontOverride("font", UITheme.FontTitleMedium);
-		_titleLabel.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterLeft);
-		_titleLabel.OffsetLeft = 16;
-		_titleBar.AddChild(_titleLabel);
+		titleRow.AddChild(_titleLabel);
 
 		// Close button ✕
 		_closeBtn = new Button();
@@ -196,9 +205,7 @@ public partial class FloatingWindow : Control
 		_closeBtn.AddThemeFontSizeOverride("font_size", 16);
 		_closeBtn.AddThemeColorOverride("font_color", UITheme.TextDim);
 		_closeBtn.AddThemeColorOverride("font_hover_color", UITheme.AccentRed);
-		_closeBtn.SetAnchorsAndOffsetsPreset(LayoutPreset.CenterRight);
-		_closeBtn.OffsetLeft = -48;
-		_closeBtn.OffsetRight = -16;
+		_closeBtn.SizeFlagsVertical = SizeFlags.ShrinkCenter;
 
 		var closeBtnNormal = new StyleBoxFlat();
 		closeBtnNormal.BgColor = Colors.Transparent;
@@ -212,7 +219,7 @@ public partial class FloatingWindow : Control
 		_closeBtn.AddThemeStyleboxOverride("pressed", closeBtnNormal);
 
 		_closeBtn.Pressed += OnClosePressed;
-		_titleBar.AddChild(_closeBtn);
+		titleRow.AddChild(_closeBtn);
 
 		_titleBar.GuiInput += OnTitleBarInput;
 

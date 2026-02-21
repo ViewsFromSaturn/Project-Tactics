@@ -10,7 +10,7 @@ public partial class JournalPanel : WindowPanel
 {
 	public JournalPanel()
 	{
-		WindowTitle = "Chronicle Keeper";
+		WindowTitle = "Journal";
 		DefaultSize = new Vector2(380, 500);
 		DefaultPosition = new Vector2(400, 60);
 	}

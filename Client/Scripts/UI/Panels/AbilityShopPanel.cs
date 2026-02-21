@@ -88,6 +88,7 @@ public partial class AbilityShopPanel : WindowPanel
 		PanelTitle = "◆ ABILITY COMPENDIUM";
 		DefaultWidth = 960;
 		DefaultHeight = 620;
+		ManagesOwnScroll = true;
 	}
 
 	// ═══════════════════════════════════════════════════════════════

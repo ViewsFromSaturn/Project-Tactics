@@ -380,6 +380,51 @@ public partial class ApiClient : Node
 	{
 		return await RequestAsync("POST", $"/admin/character/{characterId}/grant-stats", new { grants });
 	}
+
+	public async Task<ApiResponse> AdminSetRpp(string characterId, string mode, int amount)
+	{
+		return await RequestAsync("POST", $"/admin/character/{characterId}/set-rpp", new { mode, amount });
+	}
+
+	public async Task<ApiResponse> AdminSetTp(string characterId, string mode, int amount)
+	{
+		return await RequestAsync("POST", $"/admin/character/{characterId}/set-tp", new { mode, amount });
+	}
+
+	public async Task<ApiResponse> AdminSetStats(string characterId, object stats)
+	{
+		return await RequestAsync("POST", $"/admin/character/{characterId}/set-stats", new { stats });
+	}
+
+	public async Task<ApiResponse> AdminSetLevel(string characterId, int? level, string rank)
+	{
+		return await RequestAsync("POST", $"/admin/character/{characterId}/set-level", new { level, rank });
+	}
+
+	public async Task<ApiResponse> AdminResetTraining(string characterId)
+	{
+		return await RequestAsync("POST", $"/admin/character/{characterId}/reset-training");
+	}
+
+	public async Task<ApiResponse> AdminBan(string accountId, bool ban)
+	{
+		return await RequestAsync("POST", $"/admin/account/{accountId}/ban", new { ban });
+	}
+
+	public async Task<ApiResponse> AdminAnnounce(string message)
+	{
+		return await RequestAsync("POST", "/admin/announce", new { message });
+	}
+
+	public async Task<ApiResponse> AdminListCharacters()
+	{
+		return await RequestAsync("GET", "/admin/characters");
+	}
+
+	public async Task<ApiResponse> AdminListAccounts()
+	{
+		return await RequestAsync("GET", "/admin/accounts");
+	}
 }
 
 // ═════════════════════════════════════════════════════════════

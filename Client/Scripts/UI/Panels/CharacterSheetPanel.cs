@@ -436,7 +436,27 @@ public partial class CharacterSheetPanel : WindowPanel
 		if (_selectedSpellSlot >= 0)
 		{
 			col.AddChild(Spacer(2));
-			col.AddChild(UITheme.CreateDim("▸ Click to equip:", 8));
+
+			// Show currently equipped spell with unequip option
+			var currentSp = _loadout.EquippedSpells[_selectedSpellSlot];
+			if (currentSp != null)
+			{
+				var currentRow = new HBoxContainer(); currentRow.AddThemeConstantOverride("separation", 4);
+				string elIcon = ElIcons.GetValueOrDefault(currentSp.Element, "◇");
+				currentRow.AddChild(UITheme.CreateDim($"Equipped: {elIcon} {currentSp.Name}", 8));
+				var unequipBtn = MakeSmallButton("✕");
+				unequipBtn.TooltipText = "Unequip";
+				int slotToUnequip = _selectedSpellSlot;
+				unequipBtn.Pressed += () =>
+				{
+					_loadout.EquipSpell(slotToUnequip, null);
+					_selectedSpellSlot = -1;
+				};
+				currentRow.AddChild(unequipBtn);
+				col.AddChild(currentRow);
+			}
+
+			col.AddChild(UITheme.CreateDim("▸ Click to equip (replaces current):", 8));
 			var learned = _loadout.GetLearnedSpells();
 			foreach (var sp in learned)
 			{
@@ -482,7 +502,7 @@ public partial class CharacterSheetPanel : WindowPanel
 			var sk = _loadout.ActiveSkills[i];
 			string icon = sk != null ? TreeIcon(sk.Tree) : "·";
 			var btn = MakeSlotIcon(icon, null, sk != null);
-			btn.TooltipText = sk?.Name ?? "Empty active slot";
+			btn.TooltipText = sk?.Name ?? "Empty active slot (click to equip)";
 			int idx = i;
 			btn.Pressed += () => OnSkillSlotPressed(SkillSlotType.Active, idx);
 			if (_selectedSkillSlotType == SkillSlotType.Active && _selectedSkillSlotIndex == i) HighlightSlot(btn);
@@ -520,7 +540,32 @@ public partial class CharacterSheetPanel : WindowPanel
 		if (_selectedSkillSlotIndex >= 0)
 		{
 			col.AddChild(Spacer(2));
-			col.AddChild(UITheme.CreateDim("▸ Click to equip:", 8));
+
+			// Show currently equipped skill with unequip option
+			SkillDefinition current = _selectedSkillSlotType switch
+			{
+				SkillSlotType.Active => _selectedSkillSlotIndex < 5 ? _loadout.ActiveSkills[_selectedSkillSlotIndex] : null,
+				SkillSlotType.Passive => _selectedSkillSlotIndex < 2 ? _loadout.PassiveSkills[_selectedSkillSlotIndex] : null,
+				SkillSlotType.Auto => _loadout.AutoSkill,
+				_ => null
+			};
+
+			if (current != null)
+			{
+				var currentRow = new HBoxContainer(); currentRow.AddThemeConstantOverride("separation", 4);
+				currentRow.AddChild(UITheme.CreateDim($"Equipped: {current.Name}", 8));
+				var unequipBtn = MakeSmallButton("✕");
+				unequipBtn.TooltipText = "Unequip";
+				unequipBtn.Pressed += () =>
+				{
+					_loadout.EquipSkill(_selectedSkillSlotType, _selectedSkillSlotIndex, null);
+					_selectedSkillSlotIndex = -1;
+				};
+				currentRow.AddChild(unequipBtn);
+				col.AddChild(currentRow);
+			}
+
+			col.AddChild(UITheme.CreateDim("▸ Click to equip (replaces current):", 8));
 			var learned = _loadout.GetLearnedSkills().Where(s => s.Slot == _selectedSkillSlotType).ToList();
 			if (learned.Count == 0)
 			{

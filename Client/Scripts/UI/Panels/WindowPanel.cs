@@ -20,6 +20,12 @@ public abstract partial class WindowPanel : MarginContainer
 	public float DefaultWidth { get; set; } = 400f;
 	public float DefaultHeight { get; set; } = 500f;
 
+	/// <summary>
+	/// If true, BuildContent receives a direct VBoxContainer with no outer ScrollContainer.
+	/// Use for panels that manage their own scroll (e.g. AbilityShopPanel's 3-column layout).
+	/// </summary>
+	public bool ManagesOwnScroll { get; set; } = false;
+
 	public Vector2 DefaultSize
 	{
 		get => new Vector2(DefaultWidth, DefaultHeight);
@@ -58,25 +64,37 @@ public abstract partial class WindowPanel : MarginContainer
 		if (_built) return;
 		_built = true;
 
-		_scroll = new ScrollContainer();
-		_scroll.SizeFlagsVertical = SizeFlags.ExpandFill;
-		_scroll.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-		_scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
-		AddChild(_scroll);
+		if (ManagesOwnScroll)
+		{
+			// Panel manages its own scroll — give it a direct VBoxContainer
+			_content = new VBoxContainer();
+			_content.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+			_content.SizeFlagsVertical = SizeFlags.ExpandFill;
+			_content.AddThemeConstantOverride("separation", 8);
+			AddChild(_content);
+		}
+		else
+		{
+			_scroll = new ScrollContainer();
+			_scroll.SizeFlagsVertical = SizeFlags.ExpandFill;
+			_scroll.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+			_scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+			AddChild(_scroll);
 
-		var margin = new MarginContainer();
-		margin.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-		margin.SizeFlagsVertical = SizeFlags.ExpandFill;
-		margin.AddThemeConstantOverride("margin_left", 20);
-		margin.AddThemeConstantOverride("margin_right", 20);
-		margin.AddThemeConstantOverride("margin_top", 16);
-		margin.AddThemeConstantOverride("margin_bottom", 16);
-		_scroll.AddChild(margin);
+			var margin = new MarginContainer();
+			margin.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+			margin.SizeFlagsVertical = SizeFlags.ExpandFill;
+			margin.AddThemeConstantOverride("margin_left", 20);
+			margin.AddThemeConstantOverride("margin_right", 20);
+			margin.AddThemeConstantOverride("margin_top", 16);
+			margin.AddThemeConstantOverride("margin_bottom", 16);
+			_scroll.AddChild(margin);
 
-		_content = new VBoxContainer();
-		_content.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-		_content.AddThemeConstantOverride("separation", 8);
-		margin.AddChild(_content);
+			_content = new VBoxContainer();
+			_content.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+			_content.AddThemeConstantOverride("separation", 8);
+			margin.AddChild(_content);
+		}
 
 		BuildContent(_content);
 	}
@@ -153,7 +171,6 @@ public abstract partial class WindowPanel : MarginContainer
 		foreach (var child in _content.GetChildren())
 			child.QueueFree();
 		BuildContent(_content);
-		OnOpen();
 	}
 
 	protected VBoxContainer ContentBox => _content;

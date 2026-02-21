@@ -90,6 +90,9 @@ class Character(db.Model):
     current_stamina = db.Column(db.Integer, default=-1)
     current_aether = db.Column(db.Integer, default=-1)
 
+    # ─── RPP (Roleplay Points) ───────────────────────────────
+    rpp = db.Column(db.Integer, default=0)
+
     # ─── RACE MODIFIERS ──────────────────────────────────────
     race_hp_mod = db.Column(db.Float, default=1.0)
     race_stamina_mod = db.Column(db.Float, default=1.0)
@@ -254,6 +257,8 @@ class Character(db.Model):
             "current_hp": self.current_hp,
             "current_stamina": self.current_stamina,
             "current_aether": self.current_aether,
+            # RPP
+            "rpp": self.rpp,
             # Race modifiers
             "race_hp_mod": self.race_hp_mod,
             "race_stamina_mod": self.race_stamina_mod,

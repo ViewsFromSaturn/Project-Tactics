@@ -101,7 +101,7 @@ public class CharacterLoadout
 	public HashSet<string> LearnedSpellIds = new();
 
 	// RPP currency
-	public int Rpp = 100;  // Starting RPP (will come from server later)
+	public int Rpp = 0;  // Loaded from server via CharacterSelect
 
 	// Inventory: max 20
 	public List<InventoryItem> Inventory = new();
