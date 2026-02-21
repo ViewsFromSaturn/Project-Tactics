@@ -1,6 +1,6 @@
 """
 Project Tactics - Flask Backend
-REST API for authentication, character CRUD, and game data.
+REST API + SocketIO for authentication, character CRUD, game data, and real-time messaging.
 """
 import os
 from flask import Flask
@@ -11,6 +11,7 @@ from database import db
 from routes.auth import auth_bp
 from routes.characters import characters_bp
 from routes.admin import admin_bp
+from socketio_server import socketio
 
 load_dotenv()
 
@@ -29,6 +30,7 @@ def create_app():
     # ─── EXTENSIONS ──────────────────────────────────────────
     db.init_app(app)
     CORS(app, supports_credentials=True)
+    socketio.init_app(app)
 
     # ─── BLUEPRINTS ──────────────────────────────────────────
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -50,4 +52,5 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
     port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # Use socketio.run instead of app.run for WebSocket support
+    socketio.run(app, host="0.0.0.0", port=port, debug=True, allow_unsafe_werkzeug=True)

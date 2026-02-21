@@ -58,6 +58,10 @@ public partial class OverworldHUD : Control
 	private Label _chatBubble;
 	private PanelContainer _chatBubbleBg;
 
+	// ─── ADMIN ───
+	private ContextMenuPopup _contextMenu;
+	private Panels.AdminCharDetailPanel _adminDetailPanel;
+
 	public override void _Ready()
 	{
 		Instance = this;
@@ -67,6 +71,7 @@ public partial class OverworldHUD : Control
 		BuildSidebar();
 		HideDebugOverlay();
 		SetupChatBubble();
+		SetupContextMenu();
 		UITheme.ThemeChanged += OnThemeChanged;
 	}
 
@@ -101,10 +106,10 @@ public partial class OverworldHUD : Control
 		if (ev is not InputEventKey key || !key.Pressed || key.Echo) return;
 		if (ChatPanel.IsUiFocused || IsAnyTextFieldFocused) return;
 
-		// Backtick (`) — Admin panel (admin-only)
+		// Backtick (`) — Server Tools panel (admin-only)
 		if (key.Keycode == Key.Quoteleft && Networking.ApiClient.Instance?.IsAdmin == true)
 		{
-			ToggleWindow("admin");
+			ToggleWindow("servertools");
 			GetViewport().SetInputAsHandled();
 			return;
 		}
@@ -430,7 +435,9 @@ public partial class OverworldHUD : Control
 			"abilities" => new Panels.AbilityShopPanel(),
 			"mentor"    => new Panels.MentorPanel(),
 			"settings"       => new Panels.SettingsPanel(),
-			"admin"          => new Panels.AdminPanel(),
+			"admin"          => null, // legacy, removed
+			"servertools"    => CreateServerToolsPanel(),
+			"admindetail"    => new Panels.AdminCharDetailPanel(),
 			"icprofile"      => new Panels.ICProfilePanel(editMode: true),
 			"icprofile_view" => new Panels.ICProfilePanel(editMode: false),
 			_ => null
@@ -544,5 +551,73 @@ public partial class OverworldHUD : Control
 		float ethPct = p.MaxAether > 0 ? (float)p.CurrentAether / p.MaxAether : 0;
 		_ethFill.AnchorRight = Math.Clamp(ethPct, 0f, 1f);
 		_ethValue.Text = $"{p.CurrentAether}/{p.MaxAether}";
+	}
+
+	// ═════════════════════════════════════════════════════════════
+	//  CONTEXT MENU
+	// ═════════════════════════════════════════════════════════════
+
+	private void SetupContextMenu()
+	{
+		_contextMenu = new ContextMenuPopup();
+		_contextMenu.Name = "ContextMenu";
+		AddChild(_contextMenu);
+
+		_contextMenu.ViewProfileRequested += (id, name) =>
+		{
+			// Open IC profile (view mode)
+			OpenPanel("icprofile_view");
+		};
+
+		_contextMenu.SendMessageRequested += (id, name) =>
+		{
+			// Set chat to whisper mode targeting this player
+			var chatPanel = GetTree().CurrentScene.FindChild("ChatPanel", true, false) as ChatPanel;
+			if (chatPanel != null)
+			{
+				chatPanel.StartWhisperTo(name);
+			}
+		};
+
+		_contextMenu.AdminDetailsRequested += (id, name) =>
+		{
+			OpenAdminDetail(id, name);
+		};
+
+		_contextMenu.BanRequested += (id, name) =>
+		{
+			// Admin detail panel handles ban confirmation
+			OpenAdminDetail(id, name);
+		};
+	}
+
+	/// <summary>Show the right-click context menu for a character.</summary>
+	public void ShowContextMenu(string characterId, string characterName, Vector2 screenPos, string accountId = "")
+	{
+		bool isAdmin = Networking.ApiClient.Instance?.IsAdmin == true;
+		_contextMenu?.Show(characterId, characterName, screenPos, accountId, isAdmin);
+	}
+
+	/// <summary>Open the admin character detail window for a specific character.</summary>
+	public void OpenAdminDetail(string characterId, string characterName)
+	{
+		if (_adminDetailPanel == null)
+		{
+			// Create on first use
+			_adminDetailPanel = new Panels.AdminCharDetailPanel();
+			var window = FloatingWindow.Open(this, "Admin Details", _adminDetailPanel,
+				_adminDetailPanel.DefaultWidth, _adminDetailPanel.DefaultHeight);
+			_adminDetailPanel.CallDeferred(nameof(Panels.WindowPanel.DeferredOpen));
+			_openWindows["admindetail"] = window;
+		}
+
+		_adminDetailPanel.OpenForCharacter(characterId, characterName);
+	}
+
+	private Panels.WindowPanel CreateServerToolsPanel()
+	{
+		var panel = new Panels.ServerToolsPanel();
+		panel.OpenDetailRequested += (id, name) => OpenAdminDetail(id, name);
+		return panel;
 	}
 }

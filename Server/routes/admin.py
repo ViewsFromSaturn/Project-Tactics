@@ -2,7 +2,6 @@
 Admin routes for staff moderation and management.
 All routes require admin privileges.
 """
-print("!!! NEW ADMIN.PY LOADED !!!")
 from flask import Blueprint, request, jsonify, g
 from datetime import datetime, timezone
 
@@ -30,6 +29,16 @@ def list_all_characters():
     """List all characters across all accounts."""
     characters = Character.query.order_by(Character.created_at.desc()).all()
     return jsonify({"characters": [c.to_summary() for c in characters]}), 200
+
+
+@admin_bp.route("/character/<character_id>", methods=["GET"])
+@require_admin
+def get_character_detail(character_id):
+    """Get full character data for admin inspection."""
+    char = Character.query.get(character_id)
+    if not char:
+        return jsonify({"error": "Character not found"}), 404
+    return jsonify({"character": char.to_dict()}), 200
 
 
 @admin_bp.route("/character/<character_id>/set-rank", methods=["POST"])
@@ -213,9 +222,10 @@ def set_level(character_id):
     if level is not None:
         if not isinstance(level, int) or level < 1 or level > 100:
             return jsonify({"error": "Level must be 1-100."}), 400
-        # Level = average of 6 stats, so set each stat to level
+        # Reset stats to base (1 each), grant TP for fresh allocation
         for stat in VALID_STATS:
-            setattr(character, stat, level)
+            setattr(character, stat, 1)
+        character.training_points_bank = (level - 1) * 6
 
     if rank is not None:
         if rank not in VALID_RANKS:
@@ -251,15 +261,17 @@ def reset_training(character_id):
 @admin_bp.route("/announce", methods=["POST"])
 @require_admin
 def announce():
-    """Server-wide broadcast message. Client polls or receives via websocket."""
+    """Server-wide broadcast message via WebSocket."""
     data = request.get_json()
     message = data.get("message", "").strip()
 
     if not message or len(message) > 500:
         return jsonify({"error": "Message required (max 500 chars)."}), 400
 
-    # Store announcement — clients can poll /api/admin/latest-announcement
-    # For now, just acknowledge. WebSocket push comes later.
+    # Push to all connected clients via socket
+    from socketio_server import broadcast_announcement
+    broadcast_announcement(message, g.current_account.username)
+
     return jsonify({
         "message": f"Announced: {message}",
         "announcement": {

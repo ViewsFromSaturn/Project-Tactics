@@ -67,6 +67,9 @@ public partial class GameManager : Node
 		// Create fresh loadout (or load from server later)
 		ActiveLoadout = new CharacterLoadout();
 
+		// Connect real-time socket if not already connected
+		ConnectGameSocket();
+
 		GD.Print($"[GameManager] Loaded: {data.CharacterName} (ID: {characterId})");
 	}
 
@@ -119,5 +122,36 @@ public partial class GameManager : Node
 	{
 		GD.Print($"[GameManager] Loading scene: {scenePath}");
 		GetTree().ChangeSceneToFile(scenePath);
+	}
+
+	// ═════════════════════════════════════════════════════════
+	//  REAL-TIME SOCKET
+	// ═════════════════════════════════════════════════════════
+
+	private bool _socketConnected = false;
+
+	private void ConnectGameSocket()
+	{
+		var socket = Networking.GameSocket.Instance;
+		var api = Networking.ApiClient.Instance;
+		if (socket == null || api == null || !api.IsLoggedIn) return;
+		if (_socketConnected) return;
+
+		socket.Connected += OnSocketConnected;
+		socket.Connect("http://127.0.0.1:5000/api", api.AuthToken);
+		_socketConnected = true;
+	}
+
+	private void OnSocketConnected()
+	{
+		// Join world with character position
+		var socket = Networking.GameSocket.Instance;
+		if (socket == null || string.IsNullOrEmpty(ActiveCharacterId)) return;
+
+		// Get player position from scene (may not be loaded yet)
+		var player = GetTree().CurrentScene?.FindChild("Player", true, false) as Node2D;
+		var pos = player?.GlobalPosition ?? Vector2.Zero;
+
+		socket.JoinWorld(ActiveCharacterId, pos);
 	}
 }

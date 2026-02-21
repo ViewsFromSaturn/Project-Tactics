@@ -140,6 +140,7 @@ public partial class FloatingWindow : Control
 		_outerPanel.MouseFilter = MouseFilterEnum.Stop;
 		_outerPanel.CustomMinimumSize = _minSize;
 		_outerPanel.Size = _windowSize;
+		_outerPanel.ClipContents = true;
 
 		var viewport = GetViewportRect().Size;
 		_outerPanel.Position = (viewport - _windowSize) / 2f;
@@ -226,6 +227,8 @@ public partial class FloatingWindow : Control
 		// ─── Content Area ───
 		_contentContainer = new MarginContainer();
 		_contentContainer.SizeFlagsVertical = SizeFlags.ExpandFill;
+		_contentContainer.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		_contentContainer.ClipContents = true;
 		_contentContainer.AddThemeConstantOverride("margin_left", 0);
 		_contentContainer.AddThemeConstantOverride("margin_right", 0);
 		_contentContainer.AddThemeConstantOverride("margin_top", 0);

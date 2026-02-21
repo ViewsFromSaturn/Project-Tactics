@@ -112,6 +112,30 @@ public partial class PlayerController : CharacterBody2D
 		{
 			EmitSignal(SignalName.InteractionTriggered);
 		}
+
+		// Right-click on self → context menu
+		if (@event is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Right)
+		{
+			// Check if clicking on our sprite
+			if (_sprite != null)
+			{
+				var localPos = ToLocal(GetGlobalMousePosition());
+				var texSize = _sprite.Texture?.GetSize() ?? new Vector2(32, 32);
+				float hw = texSize.X / _sprite.Hframes / 2;
+				float hh = texSize.Y / _sprite.Vframes / 2;
+				var spriteRect = new Rect2(-hw, -hh, hw * 2, hh * 2);
+				spriteRect.Position += _sprite.Offset;
+
+				if (spriteRect.HasPoint(localPos))
+				{
+					var gm = Core.GameManager.Instance;
+					string charId = gm?.ActiveCharacterId ?? "";
+					string charName = gm?.ActiveCharacter?.CharacterName ?? "Unknown";
+					UI.OverworldHUD.Instance?.ShowContextMenu(charId, charName, mb.GlobalPosition);
+					GetViewport().SetInputAsHandled();
+				}
+			}
+		}
 	}
 
 	// ═════════════════════════════════════════════════════════════

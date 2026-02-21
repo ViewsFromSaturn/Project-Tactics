@@ -20,7 +20,7 @@ public partial class ChatPanel : Control
 	public static bool FadeWhenIdle { get; set; } = false;
 
 	// ═══ MESSAGE TYPES ═══
-	public enum MsgType { Say, Whisper, Yell, Emote, Ooc, Faction, Story, System, Combat }
+	public enum MsgType { Say, Whisper, Yell, Emote, Ooc, Faction, Story, System, Combat, Announce, AdminWhisper }
 
 	public record ChatMessage(string Sender, string Text, MsgType Type, string Time, Color SenderColor);
 
@@ -34,12 +34,15 @@ public partial class ChatPanel : Control
 	static Color FactionColor => new Color("E09040");
 	static Color StoryColor   => new Color("B07AE0");
 	static Color CombatColor  => new Color("E06060");
+	static Color AnnounceColor => new Color("FFD700"); // gold
+	static Color AdminWhisperColor => new Color("FF6B9D"); // pink-red, distinct from regular whisper
 	static Color SpeechWhite  => UITheme.IsDarkMode ? new Color("EEEEE8") : new Color("1A1A2E");
 
 	// ═══ STATE ═══
 	readonly List<ChatMessage> _messages = new();
 	readonly string[] _baseVerbs    = { "Say", "Whisper", "Yell", "Emote", "OOC" };
 	readonly string[] _leaderVerbs  = { "Say", "Whisper", "Yell", "Emote", "OOC", "Faction", "Story" };
+	readonly string[] _adminVerbs   = { "Say", "Whisper", "Yell", "Emote", "OOC", "Faction", "Story", "Admin" };
 	int _currentVerb = 0;
 	string _currentTab = "all";
 	bool _collapsed = false;
@@ -128,6 +131,7 @@ public partial class ChatPanel : Control
 		BuildProfilePopup();
 		BuildExportToast();
 		AddWelcomeMessages();
+		HookSocketEvents();
 
 		UITheme.ThemeChanged += OnThemeChanged;
 	}
@@ -135,6 +139,7 @@ public partial class ChatPanel : Control
 	public override void _ExitTree()
 	{
 		UITheme.ThemeChanged -= OnThemeChanged;
+		UnhookSocketEvents();
 	}
 
 	private void OnThemeChanged(bool _dark)
@@ -1089,7 +1094,7 @@ public partial class ChatPanel : Control
 		if (string.IsNullOrEmpty(text)) return;
 		ResetIdle();
 
-		string[] verbs = IsLeaderRank() ? _leaderVerbs : _baseVerbs;
+		string[] verbs = GetVerbs();
 		string verb = verbs[_currentVerb].ToLower();
 		var player = Core.GameManager.Instance?.ActiveCharacter;
 		string senderName = player?.CharacterName ?? "You";
@@ -1099,10 +1104,39 @@ public partial class ChatPanel : Control
 			"say" => MsgType.Say, "whisper" => MsgType.Whisper, "yell" => MsgType.Yell,
 			"emote" => MsgType.Emote, "ooc" => MsgType.Ooc,
 			"faction" => MsgType.Faction, "story" => MsgType.Story,
+			"admin" => MsgType.AdminWhisper,
 			_ => MsgType.Say
 		};
 
+		// Show locally
 		AddMessage(senderName, text, type, _playerIcColor);
+
+		// Send via socket
+		string socketType = type switch
+		{
+			MsgType.Say => "say", MsgType.Whisper => "whisper", MsgType.Yell => "yell",
+			MsgType.Emote => "emote", MsgType.Ooc => "ooc",
+			MsgType.Faction => "faction", MsgType.Story => "story",
+			MsgType.AdminWhisper => "admin_whisper",
+			MsgType.Announce => "announce",
+			_ => "say"
+		};
+
+		// Extract target for admin whisper (format: "PlayerName: message")
+		string target = null;
+		string sendText = text;
+		if (type == MsgType.AdminWhisper && text.Contains(':'))
+		{
+			int colonIdx = text.IndexOf(':');
+			target = text[..colonIdx].Trim();
+			sendText = text[(colonIdx + 1)..].Trim();
+			if (string.IsNullOrEmpty(sendText)) { _chatInput.Text = ""; return; }
+		}
+
+		string colorHex = _playerIcColor != Colors.Transparent
+			? _playerIcColor.ToHtml(false) : null;
+
+		Networking.GameSocket.Instance?.SendChat(socketType, sendText, target, colorHex);
 
 		// Chat bubble — only for Say
 		if (type == MsgType.Say)
@@ -1124,12 +1158,16 @@ public partial class ChatPanel : Control
 		string senderName = player?.CharacterName ?? "You";
 		AddMessage(senderName, text, MsgType.Emote, _playerIcColor);
 
+		string colorHex = _playerIcColor != Colors.Transparent
+			? _playerIcColor.ToHtml(false) : null;
+		Networking.GameSocket.Instance?.SendChat("emote", text, null, colorHex);
+
 		_emoteTextarea.Text = "";
 	}
 
 	private void CycleVerb()
 	{
-		string[] verbs = IsLeaderRank() ? _leaderVerbs : _baseVerbs;
+		string[] verbs = GetVerbs();
 		_currentVerb = (_currentVerb + 1) % verbs.Length;
 		string verb = verbs[_currentVerb];
 		_verbBtn.Text = $"{verb} ▸";
@@ -1287,14 +1325,66 @@ public partial class ChatPanel : Control
 		AddMessage("", text, MsgType.Combat);
 	}
 
+	/// <summary>Post a server announcement. Shows in all tabs except combat.</summary>
+	public void AddAnnouncement(string text)
+	{
+		AddMessage("SERVER", text, MsgType.Announce);
+	}
+
+	/// <summary>Set the chat to whisper mode targeting a specific player name.</summary>
+	public void StartWhisperTo(string playerName)
+	{
+		string[] verbs = GetVerbs();
+		for (int i = 0; i < verbs.Length; i++)
+		{
+			if (verbs[i] == "Whisper")
+			{
+				_currentVerb = i;
+				_verbBtn.Text = $"Whisper ▸";
+				_verbBtn.AddThemeColorOverride("font_color", GetVerbColor("Whisper"));
+				break;
+			}
+		}
+
+		if (_chatInput != null)
+		{
+			_chatInput.Text = $"/w {playerName} ";
+			_chatInput.GrabFocus();
+			_chatInput.CaretColumn = _chatInput.Text.Length;
+		}
+	}
+
+	/// <summary>Set the chat to admin whisper mode targeting a specific player name.</summary>
+	public void StartAdminWhisperTo(string playerName)
+	{
+		string[] verbs = GetVerbs();
+		for (int i = 0; i < verbs.Length; i++)
+		{
+			if (verbs[i] == "Admin")
+			{
+				_currentVerb = i;
+				_verbBtn.Text = $"Admin ▸";
+				_verbBtn.AddThemeColorOverride("font_color", GetVerbColor("Admin"));
+				break;
+			}
+		}
+
+		if (_chatInput != null)
+		{
+			_chatInput.Text = $"{playerName}: ";
+			_chatInput.GrabFocus();
+			_chatInput.CaretColumn = _chatInput.Text.Length;
+		}
+	}
+
 	private bool PassesFilter(MsgType type) => _currentTab switch
 	{
 		"all" => true,
-		"ic" => type is MsgType.Say or MsgType.Whisper or MsgType.Yell or MsgType.Emote or MsgType.Story,
-		"ooc" => type == MsgType.Ooc,
+		"ic" => type is MsgType.Say or MsgType.Whisper or MsgType.Yell or MsgType.Emote or MsgType.Story or MsgType.AdminWhisper,
+		"ooc" => type is MsgType.Ooc or MsgType.Announce,
 		"cbt" => type == MsgType.Combat,
-		"fac" => type == MsgType.Faction,
-		"sys" => type == MsgType.System,
+		"fac" => type is MsgType.Faction or MsgType.Announce,
+		"sys" => type is MsgType.System or MsgType.Announce,
 		_ => true
 	};
 
@@ -1338,6 +1428,8 @@ public partial class ChatPanel : Control
 			MsgType.Story => $"{t}[color=#{StoryColor.ToHtml(false)}]📖 [font_size=10][Story][/font_size] [i]{emoteText}[/i][/color]",
 			MsgType.System => $"{t}[color=#{SystemColor.ToHtml(false)}]{Esc(msg.Text)}[/color]",
 			MsgType.Combat => $"{t}[color=#{CombatColor.ToHtml(false)}]{Esc(msg.Text)}[/color]",
+			MsgType.Announce => $"{t}[color=#{AnnounceColor.ToHtml(false)}]📣 [font_size=10][SERVER][/font_size] {Esc(msg.Text)}[/color]",
+			MsgType.AdminWhisper => $"{t}[color=#{AdminWhisperColor.ToHtml(false)}]🔒 [font_size=10][Admin → {s}][/font_size]: {ParseFormatting(tx)}[/color]",
 			_ => $"{t}{Esc(msg.Text)}"
 		};
 
@@ -1410,12 +1502,20 @@ public partial class ChatPanel : Control
 		return rank is "justicar" or "banneret" or "lord commander" or "marshal" or "kage";
 	}
 
-	private string[] GetVerbs() => IsLeaderRank() ? _leaderVerbs : _baseVerbs;
+	private bool IsAdmin() => Networking.ApiClient.Instance?.IsAdmin == true;
+
+	private string[] GetVerbs()
+	{
+		if (IsAdmin()) return _adminVerbs;
+		if (IsLeaderRank()) return _leaderVerbs;
+		return _baseVerbs;
+	}
 
 	private static Color GetVerbColor(string verb) => verb switch
 	{
 		"Say" => SayColor, "Whisper" => WhisperColor, "Yell" => YellColor,
 		"Emote" => EmoteColor, "OOC" => OocColor, "Faction" => FactionColor, "Story" => StoryColor,
+		"Admin" => AdminWhisperColor,
 		_ => SayColor
 	};
 
@@ -1423,6 +1523,66 @@ public partial class ChatPanel : Control
 	{
 		AddMessage("", "Welcome to Project Tactics. Press Enter to chat.", MsgType.System);
 		AddMessage("", "Tab: cycle verb · ✎: emote panel · ⚙: settings · Esc: collapse", MsgType.System);
+	}
+
+	// ═════════════════════════════════════════════════════════
+	//  SOCKET EVENTS — INCOMING MESSAGES
+	// ═════════════════════════════════════════════════════════
+
+	private void HookSocketEvents()
+	{
+		// Defer hook — GameSocket autoload may not be ready yet
+		CallDeferred(nameof(DeferredHookSocket));
+	}
+
+	private void DeferredHookSocket()
+	{
+		var socket = Networking.GameSocket.Instance;
+		if (socket == null) return;
+		socket.ChatReceived += OnSocketChatReceived;
+		socket.ChatErrorReceived += OnSocketChatError;
+	}
+
+	private void UnhookSocketEvents()
+	{
+		var socket = Networking.GameSocket.Instance;
+		if (socket == null) return;
+		socket.ChatReceived -= OnSocketChatReceived;
+		socket.ChatErrorReceived -= OnSocketChatError;
+	}
+
+	private void OnSocketChatReceived(string sender, string senderId, string text, string type, string colorHex)
+	{
+		// Don't show our own messages (already shown locally on send)
+		string myId = Core.GameManager.Instance?.ActiveCharacterId ?? "";
+		if (senderId == myId) return;
+
+		MsgType msgType = type switch
+		{
+			"say" => MsgType.Say,
+			"whisper" => MsgType.Whisper,
+			"yell" => MsgType.Yell,
+			"emote" => MsgType.Emote,
+			"ooc" => MsgType.Ooc,
+			"faction" => MsgType.Faction,
+			"story" => MsgType.Story,
+			"announce" => MsgType.Announce,
+			"admin_whisper" => MsgType.AdminWhisper,
+			_ => MsgType.Say
+		};
+
+		Color? senderColor = null;
+		if (!string.IsNullOrEmpty(colorHex))
+		{
+			try { senderColor = new Color(colorHex); } catch { }
+		}
+
+		AddMessage(sender, text, msgType, senderColor);
+	}
+
+	private void OnSocketChatError(string error)
+	{
+		AddMessage("", $"⚠ {error}", MsgType.System);
 	}
 
 	private static void ApplyGhostStyle(Button btn)

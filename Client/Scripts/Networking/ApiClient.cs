@@ -416,6 +416,11 @@ public partial class ApiClient : Node
 		return await RequestAsync("POST", "/admin/announce", new { message });
 	}
 
+	public async Task<ApiResponse> AdminGetCharacter(string characterId)
+	{
+		return await RequestAsync("GET", $"/admin/character/{characterId}");
+	}
+
 	public async Task<ApiResponse> AdminListCharacters()
 	{
 		return await RequestAsync("GET", "/admin/characters");

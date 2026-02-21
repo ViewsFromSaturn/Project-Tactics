@@ -8,833 +8,787 @@ using ProjectTactics.Core;
 namespace ProjectTactics.UI.Panels;
 
 /// <summary>
-/// Full-screen ability database panel. Browse, filter, inspect, and purchase
-/// all 180 skill tree abilities + 105 spells.
-/// Two main tabs: SKILL TREES | SPELLS
-/// Left sidebar: category filters. Center: scrollable list. Right: detail panel.
-/// Purchases write to GameManager.ActiveLoadout so CharacterSheetPanel sees them.
+/// Ability Compendium — browse, filter, search, inspect, and purchase
+/// all 180 skill-tree abilities + 105 spells.
+/// Layout: Sidebar (category + filters) | Center (search + list) | Right (detail).
+/// Prereq: 3×T1→unlock T2, 2×T2→unlock T3, 1×T3→unlock T4 (per tree/element).
 /// </summary>
 public partial class AbilityShopPanel : WindowPanel
 {
-	// ═══════════════════════════════════════════════════════════════
-	//  THEME
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
+	//  THEME COLORS
+	// ═══════════════════════════════════════════════════
 
-	static readonly Color BgDark       = new("080812");
-	static readonly Color BgCard       = new(0.235f, 0.255f, 0.314f, 0.10f);
-	static readonly Color BgCardHover  = new(0.235f, 0.255f, 0.314f, 0.20f);
-	static readonly Color BgSelected   = new(0.545f, 0.361f, 0.965f, 0.15f);
-	static readonly Color BdSubtle     = new(0.235f, 0.255f, 0.314f, 0.35f);
-	static readonly Color BdAccent     = new("8B5CF6");
-	static readonly Color TxBright     = new("EEEEE8");
-	static readonly Color TxPrimary    = new("D4D2CC");
-	static readonly Color TxSecondary  = new("9090A0");
-	static readonly Color TxDim        = new("64647A");
-	static readonly Color TxDisabled   = new("44445A");
-	static readonly Color ColGold      = new("D4A843");
-	static readonly Color ColStamina   = new("CC8833");
-	static readonly Color ColAether    = new("5588DD");
-	static readonly Color ColBoth      = new("AA66BB");
-	static readonly Color ColGreen     = new("5CB85C");
-	static readonly Color ColRed       = new("CC4444");
+	static readonly Color BgSelected  = new(0.545f, 0.361f, 0.965f, 0.15f);
+	static readonly Color BgHover     = new(0.235f, 0.255f, 0.314f, 0.20f);
+	static readonly Color BgCard      = new(0.235f, 0.255f, 0.314f, 0.10f);
+	static readonly Color BdSubtle    = new(0.235f, 0.255f, 0.314f, 0.35f);
+	static readonly Color BdAccent    = new("8B5CF6");
+	static readonly Color Tx          = new("D4D2CC");
+	static readonly Color TxBright    = new("EEEEE8");
+	static readonly Color TxSec       = new("9090A0");
+	static readonly Color TxDim       = new("64647A");
+	static readonly Color TxOff       = new("44445A");
+	static readonly Color Gold        = new("D4A843");
+	static readonly Color Sta         = new("CC8833");
+	static readonly Color Ae          = new("5588DD");
+	static readonly Color Both        = new("AA66BB");
+	static readonly Color Green       = new("5CB85C");
+	static readonly Color Red         = new("CC4444");
 
-	static readonly Dictionary<Element, Color> ElColors = new() {
+	static readonly Dictionary<Element, Color> EC = new() {
 		{Element.None, TxDim}, {Element.Fire, new("CC4422")}, {Element.Ice, new("44AADD")},
 		{Element.Lightning, new("DDAA22")}, {Element.Earth, new("887744")},
 		{Element.Wind, new("55BB55")}, {Element.Water, new("3366AA")},
 		{Element.Light, new("DDCC66")}, {Element.Dark, new("8844AA")}
 	};
 
-	static readonly Dictionary<Element, string> ElIcons = new() {
+	static readonly Dictionary<Element, string> EI = new() {
 		{Element.None, "◇"}, {Element.Fire, "🔥"}, {Element.Ice, "❄"},
 		{Element.Lightning, "⚡"}, {Element.Earth, "🌍"}, {Element.Wind, "🌬"},
 		{Element.Water, "🌊"}, {Element.Light, "✦"}, {Element.Dark, "🔮"}
 	};
 
-	// ═══════════════════════════════════════════════════════════════
-	//  STATE — reads from shared loadout
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
+	//  STATE
+	// ═══════════════════════════════════════════════════
 
-	enum Tab { Skills, Spells }
-	Tab _activeTab = Tab.Skills;
+	enum Mode { Skills, Spells }
+	Mode _mode = Mode.Skills;
 
-	// Skill filters
-	SkillTree _selectedTree = SkillTree.Vanguard;
-	SkillSlotType? _slotFilter = null;
+	SkillTree _tree = SkillTree.Vanguard;
+	Element _element = Element.Fire;
+	int _tierFilter;                // 0 = all
+	SkillSlotType? _slotFilter;     // null = all
+	string _search = "";
 
-	// Spell filters
-	Element _selectedElement = Element.Fire;
-	int _tierFilter = 0;
+	SkillDefinition _selSkill;
+	SpellDefinition _selSpell;
 
-	// Selection
-	SkillDefinition _selectedSkill;
-	SpellDefinition _selectedSpell;
-
-	// Shared loadout — single source of truth
-	CharacterLoadout Loadout => GameManager.Instance?.ActiveLoadout;
-	int PlayerRpp => Loadout?.Rpp ?? 0;
-	HashSet<string> OwnedSkills => Loadout?.LearnedSkillIds ?? new();
-	HashSet<string> OwnedSpells => Loadout?.LearnedSpellIds ?? new();
+	CharacterLoadout Lo => GameManager.Instance?.ActiveLoadout;
+	int Rpp => Lo?.Rpp ?? 0;
+	HashSet<string> OwnSk => Lo?.LearnedSkillIds ?? new();
+	HashSet<string> OwnSp => Lo?.LearnedSpellIds ?? new();
 
 	// UI refs
-	VBoxContainer _listContainer;
-	VBoxContainer _detailContainer;
-	HBoxContainer _tabBar;
-	VBoxContainer _sidebarContainer;
-	Label _rppLabel;
+	VBoxContainer _sidebar, _list, _detail;
+	Label _rppVal;
+	LineEdit _searchBox;
 
 	public AbilityShopPanel()
 	{
 		PanelTitle = "◆ ABILITY COMPENDIUM";
-		DefaultWidth = 960;
-		DefaultHeight = 620;
+		DefaultWidth = 940;
+		DefaultHeight = 600;
 		ManagesOwnScroll = true;
 	}
 
-	// ═══════════════════════════════════════════════════════════════
-	//  BUILD
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
+	//  BUILD — anchored layout, no overflow
+	// ═══════════════════════════════════════════════════
 
-	protected override void BuildContent(VBoxContainer content)
+	protected override void BuildContent(VBoxContainer root)
 	{
-		content.AddThemeConstantOverride("separation", 0);
+		root.AddThemeConstantOverride("separation", 0);
 
-		// ─── TOP BAR: Tabs + RPP ───
-		var topBar = new HBoxContainer();
-		topBar.AddThemeConstantOverride("separation", 0);
-		content.AddChild(topBar);
+		// ── Top bar: tabs + RPP ──
+		var top = H(root, 0); top.CustomMinimumSize = new Vector2(0, 34);
+		MakeTab(top, "⚔ SKILL TREES", Mode.Skills);
+		MakeTab(top, "✦ SPELLS", Mode.Spells);
+		var sp = new Control(); sp.SizeFlagsHorizontal = SizeFlags.ExpandFill; top.AddChild(sp);
+		var rppH = H(null, 6);
+		L(rppH, "◈ RPP:", Gold, 10);
+		_rppVal = L(rppH, Rpp.ToString(), TxBright, 11, true);
+		var rppCard = Card(); rppCard.AddChild(rppH); top.AddChild(rppCard);
 
-		_tabBar = new HBoxContainer();
-		_tabBar.AddThemeConstantOverride("separation", 2);
-		_tabBar.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		topBar.AddChild(_tabBar);
+		Sep(root);
 
-		AddTab("⚔  SKILL TREES", Tab.Skills);
-		AddTab("✦  SPELLS", Tab.Spells);
+		// ── Body: sidebar | center | detail ──
+		var body = H(root, 0);
+		body.SizeFlagsVertical = SizeFlags.ExpandFill;
 
-		var spacer = new Control(); spacer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		topBar.AddChild(spacer);
+		// Sidebar (fixed 160px)
+		var sbScroll = Scroll(160);
+		body.AddChild(sbScroll);
+		_sidebar = V(null, 2); _sidebar.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		sbScroll.AddChild(_sidebar);
 
-		// RPP display
-		var rppBox = MakeCardPanel();
-		rppBox.CustomMinimumSize = new Vector2(140, 0);
-		var rppHb = new HBoxContainer(); rppHb.AddThemeConstantOverride("separation", 6);
-		rppBox.AddChild(rppHb);
-		Lbl(rppHb, "◈ RPP:", ColGold, 12);
-		_rppLabel = Lbl(rppHb, PlayerRpp.ToString(), TxBright, 14, true);
-		topBar.AddChild(rppBox);
+		VSep(body);
 
-		AddSep(content);
+		// Center (flex)
+		var centerV = new VBoxContainer();
+		centerV.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		centerV.SizeFlagsVertical = SizeFlags.ExpandFill;
+		centerV.AddThemeConstantOverride("separation", 0);
+		body.AddChild(centerV);
 
-		// ─── MAIN BODY: Sidebar | List | Detail ───
-		var body = new HBoxContainer();
-		body.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-		body.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		body.AddThemeConstantOverride("separation", 0);
-		content.AddChild(body);
+		// Search bar
+		var searchRow = H(centerV, 4);
+		searchRow.CustomMinimumSize = new Vector2(0, 28);
+		var searchMargin = new MarginContainer();
+		searchMargin.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		searchMargin.AddThemeConstantOverride("margin_left", 6);
+		searchMargin.AddThemeConstantOverride("margin_right", 6);
+		searchMargin.AddThemeConstantOverride("margin_top", 2);
+		searchMargin.AddThemeConstantOverride("margin_bottom", 2);
+		searchRow.AddChild(searchMargin);
 
-		// ── LEFT SIDEBAR ──
-		var sidebarScroll = new ScrollContainer();
-		sidebarScroll.CustomMinimumSize = new Vector2(170, 0);
-		sidebarScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-		sidebarScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
-		body.AddChild(sidebarScroll);
+		_searchBox = new LineEdit();
+		_searchBox.PlaceholderText = "🔍 Search abilities...";
+		_searchBox.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		_searchBox.AddThemeFontSizeOverride("font_size", 10);
+		_searchBox.AddThemeColorOverride("font_color", Tx);
+		_searchBox.AddThemeColorOverride("font_placeholder_color", TxDim);
+		var searchStyle = new StyleBoxFlat();
+		searchStyle.BgColor = new Color(0.1f, 0.1f, 0.15f, 0.6f);
+		searchStyle.SetContentMarginAll(4); searchStyle.ContentMarginLeft = 8;
+		searchStyle.SetCornerRadiusAll(4);
+		searchStyle.BorderColor = BdSubtle; searchStyle.SetBorderWidthAll(1);
+		_searchBox.AddThemeStyleboxOverride("normal", searchStyle);
+		_searchBox.TextChanged += s => { _search = s; RebuildList(); };
+		searchMargin.AddChild(_searchBox);
 
-		_sidebarContainer = new VBoxContainer();
-		_sidebarContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		_sidebarContainer.AddThemeConstantOverride("separation", 2);
-		sidebarScroll.AddChild(_sidebarContainer);
+		Sep(centerV);
 
-		AddVSep(body);
-
-		// ── CENTER LIST ──
 		var listScroll = new ScrollContainer();
-		listScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		listScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+		listScroll.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		listScroll.SizeFlagsVertical = SizeFlags.ExpandFill;
 		listScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
-		body.AddChild(listScroll);
+		centerV.AddChild(listScroll);
 
-		_listContainer = new VBoxContainer();
-		_listContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		_listContainer.AddThemeConstantOverride("separation", 1);
-		listScroll.AddChild(_listContainer);
+		_list = V(null, 1); _list.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		listScroll.AddChild(_list);
 
-		AddVSep(body);
+		VSep(body);
 
-		// ── RIGHT DETAIL ──
-		var detailScroll = new ScrollContainer();
-		detailScroll.CustomMinimumSize = new Vector2(280, 0);
-		detailScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-		detailScroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
-		body.AddChild(detailScroll);
+		// Detail (fixed 240px)
+		var detScroll = Scroll(240);
+		body.AddChild(detScroll);
+		var detMargin = new MarginContainer();
+		detMargin.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		detMargin.AddThemeConstantOverride("margin_left", 10);
+		detMargin.AddThemeConstantOverride("margin_right", 10);
+		detMargin.AddThemeConstantOverride("margin_top", 8);
+		detScroll.AddChild(detMargin);
+		_detail = V(null, 6); _detail.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		detMargin.AddChild(_detail);
 
-		var detailMargin = new MarginContainer();
-		detailMargin.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		detailMargin.AddThemeConstantOverride("margin_left", 12);
-		detailMargin.AddThemeConstantOverride("margin_right", 12);
-		detailMargin.AddThemeConstantOverride("margin_top", 8);
-		detailScroll.AddChild(detailMargin);
-
-		_detailContainer = new VBoxContainer();
-		_detailContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		_detailContainer.AddThemeConstantOverride("separation", 6);
-		detailMargin.AddChild(_detailContainer);
-
-		RebuildSidebar();
-		RebuildList();
-		ShowEmptyDetail();
+		RebuildSidebar(); RebuildList(); ShowEmpty();
 	}
 
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
 	//  TABS
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
 
-	void AddTab(string text, Tab tab)
+	void MakeTab(HBoxContainer parent, string text, Mode mode)
 	{
 		var btn = new Button();
 		btn.Text = text;
-		btn.ToggleMode = true;
-		btn.ButtonPressed = (tab == _activeTab);
-		btn.CustomMinimumSize = new Vector2(160, 36);
-		btn.AddThemeFontSizeOverride("font_size", 12);
+		btn.CustomMinimumSize = new Vector2(140, 34);
+		btn.AddThemeFontSizeOverride("font_size", 11);
 
-		var style = new StyleBoxFlat();
-		style.BgColor = (tab == _activeTab) ? BgSelected : Colors.Transparent;
-		style.SetContentMarginAll(8);
-		style.BorderWidthBottom = (tab == _activeTab) ? 2 : 0;
-		style.BorderColor = BdAccent;
-		style.SetCornerRadiusAll(0);
-		btn.AddThemeStyleboxOverride("normal", style);
-		btn.AddThemeStyleboxOverride("pressed", style);
-
-		var hover = style.Duplicate() as StyleBoxFlat;
-		hover.BgColor = BgCardHover;
-		btn.AddThemeStyleboxOverride("hover", hover);
-
-		btn.AddThemeColorOverride("font_color", (tab == _activeTab) ? TxBright : TxSecondary);
-		btn.AddThemeColorOverride("font_pressed_color", TxBright);
+		bool active = mode == _mode;
+		var s = new StyleBoxFlat();
+		s.BgColor = active ? BgSelected : Colors.Transparent;
+		s.SetContentMarginAll(6);
+		s.BorderWidthBottom = active ? 2 : 0;
+		s.BorderColor = BdAccent;
+		btn.AddThemeStyleboxOverride("normal", s);
+		btn.AddThemeStyleboxOverride("pressed", s);
+		var hv = s.Duplicate() as StyleBoxFlat; hv.BgColor = BgHover;
+		btn.AddThemeStyleboxOverride("hover", hv);
+		btn.AddThemeColorOverride("font_color", active ? TxBright : TxSec);
 		btn.AddThemeColorOverride("font_hover_color", TxBright);
 
-		btn.Pressed += () => SwitchTab(tab);
-		_tabBar.AddChild(btn);
+		btn.Pressed += () => { _mode = mode; _selSkill = null; _selSpell = null;
+			_tierFilter = 0; _slotFilter = null; _search = ""; _searchBox.Text = "";
+			CallDeferred(nameof(FullRebuild)); };
+		parent.AddChild(btn);
 	}
 
-	void SwitchTab(Tab tab)
-	{
-		_activeTab = tab;
-		_selectedSkill = null;
-		_selectedSpell = null;
-		CallDeferred(nameof(RebuildTabs));
-	}
+	void FullRebuild() { RebuildTabs(); RebuildSidebar(); RebuildList(); ShowEmpty(); }
 
 	void RebuildTabs()
 	{
-		foreach (var c in _tabBar.GetChildren()) (c as Node)?.QueueFree();
-		AddTab("⚔  SKILL TREES", Tab.Skills);
-		AddTab("✦  SPELLS", Tab.Spells);
-		RebuildSidebar();
-		RebuildList();
-		ShowEmptyDetail();
+		var root = GetContentRoot();
+		if (root == null) return;
+		var oldTop = root.GetChild(0) as Control;
+		if (oldTop == null) return;
+
+		var top = H(null, 0); top.CustomMinimumSize = new Vector2(0, 34);
+		MakeTab(top, "⚔ SKILL TREES", Mode.Skills);
+		MakeTab(top, "✦ SPELLS", Mode.Spells);
+		var sp = new Control(); sp.SizeFlagsHorizontal = SizeFlags.ExpandFill; top.AddChild(sp);
+		var rppH = H(null, 6);
+		L(rppH, "◈ RPP:", Gold, 10);
+		_rppVal = L(rppH, Rpp.ToString(), TxBright, 11, true);
+		var rppCard = Card(); rppCard.AddChild(rppH); top.AddChild(rppCard);
+
+		root.AddChild(top);
+		root.MoveChild(top, 0);
+		oldTop.QueueFree();
 	}
 
-	// ═══════════════════════════════════════════════════════════════
+	/// <summary>Walk up from sidebar to find the VBoxContainer root.</summary>
+	VBoxContainer GetContentRoot()
+	{
+		// _sidebar → sbScroll → body(HBox) → root(VBox)
+		var sbScroll = _sidebar?.GetParent();
+		var body = sbScroll?.GetParent();
+		return body?.GetParent() as VBoxContainer;
+	}
+
+	// ═══════════════════════════════════════════════════
 	//  SIDEBAR
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
 
 	void RebuildSidebar()
 	{
-		ClearChildren(_sidebarContainer);
+		Clear(_sidebar);
 
-		if (_activeTab == Tab.Skills)
+		if (_mode == Mode.Skills)
 		{
-			Lbl(_sidebarContainer, "SKILL TREES", ColGold, 11, true);
-			AddSep(_sidebarContainer);
-
-			foreach (SkillTree tree in Enum.GetValues<SkillTree>())
+			SideLabel("  SKILL TREES");
+			Sep(_sidebar);
+			foreach (SkillTree t in Enum.GetValues<SkillTree>())
 			{
-				var btn = MakeSidebarBtn(TreeLabel(tree), tree == _selectedTree);
-				var t = tree;
-				btn.Pressed += () => { _selectedTree = t; _slotFilter = null; RebuildSidebar(); RebuildList(); };
-				_sidebarContainer.AddChild(btn);
+				var bt = SideBtn(TreeLbl(t), t == _tree);
+				var tt = t;
+				bt.Pressed += () => { _tree = tt; _slotFilter = null; _tierFilter = 0;
+					RebuildSidebar(); RebuildList(); };
+				_sidebar.AddChild(bt);
 			}
-
-			AddSep(_sidebarContainer);
-			Lbl(_sidebarContainer, "FILTER BY SLOT", TxDim, 10);
-
-			var allBtn = MakeSidebarBtn("All Types", _slotFilter == null);
-			allBtn.Pressed += () => { _slotFilter = null; RebuildSidebar(); RebuildList(); };
-			_sidebarContainer.AddChild(allBtn);
-
-			foreach (SkillSlotType slot in Enum.GetValues<SkillSlotType>())
-			{
-				string icon = slot == SkillSlotType.Active ? "⚔" : slot == SkillSlotType.Passive ? "◈" : "⟐";
-				var btn = MakeSidebarBtn($"{icon} {slot}", _slotFilter == slot);
-				var s = slot;
-				btn.Pressed += () => { _slotFilter = s; RebuildSidebar(); RebuildList(); };
-				_sidebarContainer.AddChild(btn);
-			}
+			Sep(_sidebar);
+			SideLabel("  FILTER BY TYPE");
+			AddSlotBtn("All Types", null);
+			AddSlotBtn("⚔ Active", SkillSlotType.Active);
+			AddSlotBtn("◈ Passive", SkillSlotType.Passive);
+			AddSlotBtn("⟐ Auto", SkillSlotType.Auto);
+			Sep(_sidebar);
+			SideLabel("  FILTER BY TIER");
+			AddTierBtn("All Tiers", 0);
+			AddTierBtn("Tier I", 1);
+			AddTierBtn("Tier II", 2);
+			AddTierBtn("Tier III", 3);
+			AddTierBtn("Tier IV", 4);
 		}
 		else
 		{
-			Lbl(_sidebarContainer, "ELEMENTS", ColGold, 11, true);
-			AddSep(_sidebarContainer);
-
+			SideLabel("  ELEMENTS");
+			Sep(_sidebar);
 			foreach (Element el in new[] { Element.Fire, Element.Ice, Element.Lightning,
 				Element.Earth, Element.Wind, Element.Water, Element.Light, Element.Dark })
 			{
-				string icon = ElIcons.GetValueOrDefault(el, "◇");
-				var btn = MakeSidebarBtn($"{icon} {el}", el == _selectedElement);
-				btn.AddThemeColorOverride("font_color", el == _selectedElement ?
-					TxBright : ElColors.GetValueOrDefault(el, TxPrimary));
+				string icon = EI.GetValueOrDefault(el, "◇");
+				var bt = SideBtn($"{icon} {el}", el == _element);
+				bt.AddThemeColorOverride("font_color", el == _element ? TxBright : EC.GetValueOrDefault(el, Tx));
 				var e = el;
-				btn.Pressed += () => { _selectedElement = e; RebuildSidebar(); RebuildList(); };
-				_sidebarContainer.AddChild(btn);
+				bt.Pressed += () => { _element = e; _tierFilter = 0;
+					RebuildSidebar(); RebuildList(); };
+				_sidebar.AddChild(bt);
 			}
-
-			AddSep(_sidebarContainer);
-			Lbl(_sidebarContainer, "FILTER BY TIER", TxDim, 10);
-
-			var allBtn = MakeSidebarBtn("All Tiers", _tierFilter == 0);
-			allBtn.Pressed += () => { _tierFilter = 0; RebuildSidebar(); RebuildList(); };
-			_sidebarContainer.AddChild(allBtn);
-
+			Sep(_sidebar);
+			SideLabel("  FILTER BY TIER");
+			string stat = GetElStat(_element);
+			AddTierBtn("All Tiers", 0);
 			for (int t = 1; t <= 4; t++)
 			{
-				string roman = t switch { 1 => "I", 2 => "II", 3 => "III", _ => "IV" };
-				int reqStat = SpellDatabase.GetStatReq(t);
-				var btn = MakeSidebarBtn($"Tier {roman}  (req {reqStat})", _tierFilter == t);
-				int tier = t;
-				btn.Pressed += () => { _tierFilter = tier; RebuildSidebar(); RebuildList(); };
-				_sidebarContainer.AddChild(btn);
+				int req = SpellDatabase.GetStatReq(t);
+				AddTierBtn($"Tier {TR(t)}  ({stat} {req}+)", t);
 			}
 		}
 	}
 
-	// ═══════════════════════════════════════════════════════════════
-	//  LIST
-	// ═══════════════════════════════════════════════════════════════
+	void AddSlotBtn(string text, SkillSlotType? slot)
+	{
+		var bt = SideBtn(text, _slotFilter == slot);
+		bt.Pressed += () => { _slotFilter = slot; RebuildSidebar(); RebuildList(); };
+		_sidebar.AddChild(bt);
+	}
+
+	void AddTierBtn(string text, int tier)
+	{
+		var bt = SideBtn(text, _tierFilter == tier);
+		bt.Pressed += () => { _tierFilter = tier; RebuildSidebar(); RebuildList(); };
+		_sidebar.AddChild(bt);
+	}
+
+	// ═══════════════════════════════════════════════════
+	//  LIST — header + rows
+	// ═══════════════════════════════════════════════════
 
 	void RebuildList()
 	{
-		ClearChildren(_listContainer);
+		Clear(_list);
 
-		if (_activeTab == Tab.Skills)
+		if (_mode == Mode.Skills)
 		{
-			var skills = SkillDatabase.GetTree(_selectedTree);
-			if (_slotFilter.HasValue)
-				skills = skills.Where(s => s.Slot == _slotFilter.Value).ToList();
+			var skills = SkillDatabase.GetTree(_tree).AsEnumerable();
+			if (_slotFilter.HasValue) skills = skills.Where(s => s.Slot == _slotFilter.Value);
+			if (_tierFilter > 0) skills = skills.Where(s => s.Tier == _tierFilter);
+			if (!string.IsNullOrEmpty(_search))
+				skills = skills.Where(s => s.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-			var header = MakeListHeader();
-			AddListHeaderCell(header, "Name", 200);
-			AddListHeaderCell(header, "Type", 60);
-			AddListHeaderCell(header, "Tier", 40);
-			AddListHeaderCell(header, "Cost", 70);
-			AddListHeaderCell(header, "Range", 45);
-			AddListHeaderCell(header, "RT", 35);
-			AddListHeaderCell(header, "Power", 50);
-			AddListHeaderCell(header, "Status", 60);
-			_listContainer.AddChild(header);
+			var hdr = HRow();
+			HCell(hdr, "Name", 180); HCell(hdr, "Type", 55); HCell(hdr, "Tier", 35);
+			HCell(hdr, "Cost", 60); HCell(hdr, "Range", 40); HCell(hdr, "RT", 30);
+			HCell(hdr, "Pwr", 40); HCell(hdr, "Status", 55);
+			_list.AddChild(hdr);
 
-			foreach (var skill in skills)
-				_listContainer.AddChild(BuildSkillRow(skill));
+			foreach (var sk in skills) _list.AddChild(SkillRow(sk));
 		}
 		else
 		{
-			var spells = SpellDatabase.GetElement(_selectedElement);
-			if (_tierFilter > 0)
-				spells = spells.Where(s => s.Tier == _tierFilter).ToList();
+			var spells = SpellDatabase.GetElement(_element).AsEnumerable();
+			if (_tierFilter > 0) spells = spells.Where(s => s.Tier == _tierFilter);
+			if (!string.IsNullOrEmpty(_search))
+				spells = spells.Where(s => s.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-			var header = MakeListHeader();
-			AddListHeaderCell(header, "Name", 160);
-			AddListHeaderCell(header, "Tier", 40);
-			AddListHeaderCell(header, "AE", 40);
-			AddListHeaderCell(header, "Range", 50);
-			AddListHeaderCell(header, "Area", 50);
-			AddListHeaderCell(header, "RT", 35);
-			AddListHeaderCell(header, "Power", 50);
-			AddListHeaderCell(header, "RPP", 45);
-			AddListHeaderCell(header, "Type", 60);
-			_listContainer.AddChild(header);
+			var hdr = HRow();
+			HCell(hdr, "Name", 140); HCell(hdr, "Tier", 35); HCell(hdr, "AE", 35);
+			HCell(hdr, "Range", 45); HCell(hdr, "Area", 40); HCell(hdr, "RT", 30);
+			HCell(hdr, "Pwr", 40); HCell(hdr, "RPP", 35); HCell(hdr, "Status", 55);
+			_list.AddChild(hdr);
 
-			foreach (var spell in spells)
-				_listContainer.AddChild(BuildSpellRow(spell));
+			foreach (var sp in spells) _list.AddChild(SpellRow(sp));
 		}
 	}
 
-	// ─── Skill Row ──────────────────────────────────────────────
+	// ─── Skill row ──────────────────────────────────
 
-	Control BuildSkillRow(SkillDefinition sk)
+	Control SkillRow(SkillDefinition sk)
 	{
-		bool owned = OwnedSkills.Contains(sk.Id);
-		bool selected = _selectedSkill?.Id == sk.Id;
-		Color rowBg = selected ? BgSelected : Colors.Transparent;
+		bool owned = OwnSk.Contains(sk.Id);
+		bool unlocked = SkillTierUnlocked(sk);
+		bool locked = !owned && !unlocked;
+		bool sel = _selSkill?.Id == sk.Id;
 
-		var row = new PanelContainer();
-		var rowStyle = new StyleBoxFlat();
-		rowStyle.BgColor = rowBg;
-		rowStyle.SetContentMarginAll(4);
-		rowStyle.ContentMarginLeft = 8;
-		row.AddThemeStyleboxOverride("panel", rowStyle);
-		row.CustomMinimumSize = new Vector2(0, 28);
+		var row = Row(sel);
+		row.GuiInput += e => { if (Click(e)) { _selSkill = sk; _selSpell = null; RebuildList(); ShowSkill(sk); } };
 
-		row.MouseFilter = Control.MouseFilterEnum.Stop;
-		row.GuiInput += (ev) => {
-			if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
-			{
-				_selectedSkill = sk;
-				_selectedSpell = null;
-				RebuildList();
-				ShowSkillDetail(sk);
-			}
-		};
+		var h = H(null, 0); h.MouseFilter = MouseFilterEnum.Ignore; row.AddChild(h);
 
-		var hbox = new HBoxContainer();
-		hbox.AddThemeConstantOverride("separation", 0);
-		hbox.MouseFilter = Control.MouseFilterEnum.Ignore;
-		row.AddChild(hbox);
+		string ico = sk.Slot == SkillSlotType.Active ? "⚔" : sk.Slot == SkillSlotType.Passive ? "◈" : "⟐";
+		Color sc = sk.Slot == SkillSlotType.Active ? Sta : sk.Slot == SkillSlotType.Passive ? Ae : Both;
 
-		string slotIcon = sk.Slot == SkillSlotType.Active ? "⚔" : sk.Slot == SkillSlotType.Passive ? "◈" : "⟐";
-		Color slotColor = sk.Slot == SkillSlotType.Active ? ColStamina :
-			sk.Slot == SkillSlotType.Passive ? ColAether : ColBoth;
+		string nm = owned ? $"✓ {sk.Name}" : locked ? $"🔒 {sk.Name}" : sk.Name;
+		Color nc = owned ? Green : locked ? TxOff : Tx;
 
-		string nameStr = owned ? $"✓ {sk.Name}" : sk.Name;
-		Color nameCol = owned ? ColGreen : TxPrimary;
-		LblFixed(hbox, nameStr, nameCol, 11, 200);
-		LblFixed(hbox, $"{slotIcon} {SlotShort(sk.Slot)}", slotColor, 10, 60);
-		LblFixed(hbox, TierRoman(sk.Tier), ColGold, 10, 40);
-		LblFixed(hbox, CostStr(sk), ResourceColor(sk.Resource), 10, 70);
-		LblFixed(hbox, sk.Range > 0 ? sk.Range.ToString() : "—", TxDim, 10, 45);
-		LblFixed(hbox, sk.RtCost > 0 ? $"+{sk.RtCost}" : "—", TxDim, 10, 35);
-		LblFixed(hbox, sk.Power > 0 ? sk.Power.ToString() : "—", TxSecondary, 10, 50);
-		LblFixed(hbox, owned ? "OWNED" : "—", owned ? ColGreen : TxDisabled, 9, 60);
+		F(h, nm, nc, 10, 180);
+		F(h, $"{ico} {SlotS(sk.Slot)}", locked ? TxOff : sc, 9, 55);
+		F(h, TR(sk.Tier), locked ? TxOff : Gold, 9, 35);
+		F(h, CostS(sk), locked ? TxOff : ResC(sk.Resource), 9, 60);
+		F(h, sk.Range > 0 ? sk.Range.ToString() : "—", TxDim, 9, 40);
+		F(h, sk.RtCost > 0 ? $"+{sk.RtCost}" : "—", TxDim, 9, 30);
+		F(h, sk.Power > 0 ? sk.Power.ToString() : "—", TxSec, 9, 40);
+
+		string st = owned ? "OWNED" : locked ? "LOCKED" : "—";
+		Color stc = owned ? Green : locked ? Red : TxOff;
+		F(h, st, stc, 8, 55);
 
 		return row;
 	}
 
-	// ─── Spell Row ──────────────────────────────────────────────
+	// ─── Spell row ──────────────────────────────────
 
-	Control BuildSpellRow(SpellDefinition sp)
+	Control SpellRow(SpellDefinition sp)
 	{
-		bool owned = OwnedSpells.Contains(sp.Id);
-		bool selected = _selectedSpell?.Id == sp.Id;
-		Color rowBg = selected ? BgSelected : Colors.Transparent;
+		bool owned = OwnSp.Contains(sp.Id);
+		bool unlocked = SpellTierUnlocked(sp);
+		bool locked = !owned && !unlocked;
+		bool sel = _selSpell?.Id == sp.Id;
 
-		var row = new PanelContainer();
-		var rowStyle = new StyleBoxFlat();
-		rowStyle.BgColor = rowBg;
-		rowStyle.SetContentMarginAll(4);
-		rowStyle.ContentMarginLeft = 8;
-		row.AddThemeStyleboxOverride("panel", rowStyle);
-		row.CustomMinimumSize = new Vector2(0, 28);
+		var row = Row(sel);
+		row.GuiInput += e => { if (Click(e)) { _selSpell = sp; _selSkill = null; RebuildList(); ShowSpell(sp); } };
 
-		row.MouseFilter = Control.MouseFilterEnum.Stop;
-		row.GuiInput += (ev) => {
-			if (ev is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
-			{
-				_selectedSpell = sp;
-				_selectedSkill = null;
-				RebuildList();
-				ShowSpellDetail(sp);
-			}
-		};
+		var h = H(null, 0); h.MouseFilter = MouseFilterEnum.Ignore; row.AddChild(h);
 
-		var hbox = new HBoxContainer();
-		hbox.AddThemeConstantOverride("separation", 0);
-		hbox.MouseFilter = Control.MouseFilterEnum.Ignore;
-		row.AddChild(hbox);
+		string nm = owned ? $"✓ {sp.Name}" : locked ? $"🔒 {sp.Name}" : sp.Name;
+		Color nc = owned ? Green : locked ? TxOff : EC.GetValueOrDefault(sp.Element, Tx);
 
-		Color nameCol = owned ? ColGreen : ElColors.GetValueOrDefault(sp.Element, TxPrimary);
-		string nameStr = owned ? $"✓ {sp.Name}" : sp.Name;
+		F(h, nm, nc, 10, 140);
+		F(h, TR(sp.Tier), locked ? TxOff : Gold, 9, 35);
+		F(h, sp.AetherCost.ToString(), locked ? TxOff : Ae, 9, 35);
+		string rng = sp.RangeMin == sp.RangeMax ? sp.RangeMax.ToString() : $"{sp.RangeMin}-{sp.RangeMax}";
+		F(h, rng, TxDim, 9, 45);
+		F(h, sp.AreaSize > 0 ? $"D({sp.AreaSize})" : "1", TxDim, 9, 40);
+		F(h, $"+{sp.RtCost}", TxDim, 9, 30);
+		F(h, sp.Power > 0 ? sp.Power.ToString() : "—", TxSec, 9, 40);
+		F(h, sp.RppCost.ToString(), locked ? TxOff : Gold, 9, 35);
 
-		LblFixed(hbox, nameStr, nameCol, 11, 160);
-		LblFixed(hbox, TierRoman(sp.Tier), ColGold, 10, 40);
-		LblFixed(hbox, sp.AetherCost.ToString(), ColAether, 10, 40);
-		LblFixed(hbox, sp.RangeMin == sp.RangeMax ? sp.RangeMax.ToString() : $"{sp.RangeMin}-{sp.RangeMax}", TxDim, 10, 50);
-		LblFixed(hbox, sp.AreaSize > 0 ? $"D({sp.AreaSize})" : "1", TxDim, 10, 50);
-		LblFixed(hbox, $"+{sp.RtCost}", TxDim, 10, 35);
-		LblFixed(hbox, sp.Power > 0 ? sp.Power.ToString() : "—", TxSecondary, 10, 50);
-		LblFixed(hbox, sp.RppCost.ToString(), ColGold, 10, 45);
-		LblFixed(hbox, CastTypeShort(sp.CastType), TxDim, 9, 60);
+		string st = owned ? "OWNED" : locked ? "LOCKED" : "—";
+		Color stc = owned ? Green : locked ? Red : TxOff;
+		F(h, st, stc, 8, 55);
 
 		return row;
 	}
 
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
 	//  DETAIL PANEL
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
 
-	void ShowEmptyDetail()
+	void ShowEmpty()
 	{
-		ClearChildren(_detailContainer);
-		Lbl(_detailContainer, "Select an ability", TxDim, 12);
-		Lbl(_detailContainer, "to view details", TxDisabled, 10);
+		Clear(_detail);
+		L(_detail, "Select an ability", TxSec, 12);
+		L(_detail, "to view details", TxDim, 10);
 	}
 
-	void ShowSkillDetail(SkillDefinition sk)
+	void ShowSkill(SkillDefinition sk)
 	{
-		ClearChildren(_detailContainer);
-		bool owned = OwnedSkills.Contains(sk.Id);
+		Clear(_detail);
+		bool owned = OwnSk.Contains(sk.Id);
+		bool unlocked = SkillTierUnlocked(sk);
 
-		Lbl(_detailContainer, sk.Name, TxBright, 16, true);
+		L(_detail, sk.Name, TxBright, 14, true);
 
-		// Tags
-		var tags = new HBoxContainer();
-		tags.AddThemeConstantOverride("separation", 6);
-		_detailContainer.AddChild(tags);
+		var tags = H(_detail, 4);
+		Tag(tags, SlotS(sk.Slot), sk.Slot == SkillSlotType.Active ? Sta : sk.Slot == SkillSlotType.Passive ? Ae : Both);
+		Tag(tags, $"Tier {TR(sk.Tier)}", Gold);
+		Tag(tags, sk.Tree.ToString(), BdAccent);
+		if (sk.Element != Element.None) Tag(tags, sk.Element.ToString(), EC.GetValueOrDefault(sk.Element, TxDim));
 
-		AddTag(tags, $"{SlotShort(sk.Slot)}", sk.Slot == SkillSlotType.Active ? ColStamina :
-			sk.Slot == SkillSlotType.Passive ? ColAether : ColBoth);
-		AddTag(tags, $"Tier {TierRoman(sk.Tier)}", ColGold);
-		AddTag(tags, sk.Tree.ToString(), BdAccent);
-		if (sk.Element != Element.None)
-			AddTag(tags, sk.Element.ToString(), ElColors.GetValueOrDefault(sk.Element, TxDim));
+		Sep(_detail);
 
-		AddSep(_detailContainer);
-
-		// Description
-		var descLabel = new Label();
-		descLabel.Text = sk.Description;
-		descLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		descLabel.AddThemeColorOverride("font_color", TxPrimary);
-		descLabel.AddThemeFontSizeOverride("font_size", 11);
-		_detailContainer.AddChild(descLabel);
+		var desc = new Label();
+		desc.Text = sk.Description;
+		desc.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		desc.AddThemeColorOverride("font_color", Tx);
+		desc.AddThemeFontSizeOverride("font_size", 10);
+		_detail.AddChild(desc);
 
 		if (!string.IsNullOrEmpty(sk.ScalingNote))
 		{
-			Lbl(_detailContainer, $"Ranks: {sk.ScalingNote}", ColGold, 10);
-			Lbl(_detailContainer, $"Max Rank: {sk.MaxRank}", TxDim, 10);
+			L(_detail, $"Ranks: {sk.ScalingNote}", Gold, 9);
+			L(_detail, $"Max Rank: {sk.MaxRank}", TxDim, 9);
 		}
 
-		AddSep(_detailContainer);
+		Sep(_detail);
+		L(_detail, "◆ COMBAT DATA", TxSec, 9, true);
+		var g = Grid();
+		if (sk.StaminaCost > 0) GRow(g, "Stamina", sk.StaminaCost.ToString(), Sta);
+		if (sk.AetherCost > 0) GRow(g, "Aether", sk.AetherCost.ToString(), Ae);
+		if (sk.RtCost > 0) GRow(g, "RT Cost", $"+{sk.RtCost}", Tx);
+		if (sk.Power > 0) GRow(g, "Power", sk.Power.ToString(), TxBright);
+		if (sk.Range > 0) GRow(g, "Range", sk.Range.ToString(), Tx);
+		GRow(g, "Target", sk.Target.ToString(), Tx);
+		if (sk.AreaSize > 0) GRow(g, "Area", $"Diamond({sk.AreaSize})", Tx);
+		if (sk.Weapon != WeaponReq.None) GRow(g, "Weapon", WpnS(sk.Weapon), TxSec);
+		_detail.AddChild(g);
 
-		// Stats grid
-		Lbl(_detailContainer, "◆ COMBAT DATA", TxSecondary, 10, true);
-		var grid = new GridContainer();
-		grid.Columns = 2;
-		grid.AddThemeConstantOverride("h_separation", 16);
-		grid.AddThemeConstantOverride("v_separation", 2);
-		_detailContainer.AddChild(grid);
-
-		if (sk.Resource != ResourceType.None)
-			AddStatRow(grid, "Resource", sk.Resource.ToString(), ResourceColor(sk.Resource));
-		if (sk.StaminaCost > 0) AddStatRow(grid, "Stamina", sk.StaminaCost.ToString(), ColStamina);
-		if (sk.AetherCost > 0) AddStatRow(grid, "Aether", sk.AetherCost.ToString(), ColAether);
-		if (sk.RtCost > 0) AddStatRow(grid, "RT Cost", $"+{sk.RtCost}", TxPrimary);
-		if (sk.Power > 0) AddStatRow(grid, "Power", sk.Power.ToString(), TxBright);
-		if (sk.Range > 0) AddStatRow(grid, "Range", sk.Range.ToString(), TxPrimary);
-		AddStatRow(grid, "Target", sk.Target.ToString(), TxPrimary);
-		if (sk.AreaSize > 0) AddStatRow(grid, "Area", $"Diamond({sk.AreaSize})", TxPrimary);
-		if (sk.Weapon != WeaponReq.None)
-			AddStatRow(grid, "Weapon", WeaponLabel(sk.Weapon), TxSecondary);
-
-		AddSep(_detailContainer);
-
-		// Purchase / Status
-		if (owned)
-		{
-			var ownedPanel = MakeCardPanel();
-			Lbl(ownedPanel, "✓  LEARNED", ColGreen, 12, true);
-			_detailContainer.AddChild(ownedPanel);
-		}
-		else
-		{
-			int rppCost = sk.Tier * 5;
-			bool canAfford = PlayerRpp >= rppCost;
-
-			var costRow = new HBoxContainer();
-			costRow.AddThemeConstantOverride("separation", 8);
-			_detailContainer.AddChild(costRow);
-			Lbl(costRow, "Cost:", TxSecondary, 11);
-			Lbl(costRow, $"{rppCost} RPP", canAfford ? ColGold : ColRed, 11, true);
-
-			var buyBtn = new Button();
-			buyBtn.Text = canAfford ? $"LEARN  ({rppCost} RPP)" : "INSUFFICIENT RPP";
-			buyBtn.Disabled = !canAfford;
-			buyBtn.CustomMinimumSize = new Vector2(250, 36);
-			buyBtn.AddThemeFontSizeOverride("font_size", 12);
-
-			var btnStyle = new StyleBoxFlat();
-			btnStyle.BgColor = canAfford ? new Color(BdAccent, 0.3f) : new Color(TxDisabled, 0.1f);
-			btnStyle.SetContentMarginAll(8);
-			btnStyle.SetCornerRadiusAll(4);
-			btnStyle.BorderWidthBottom = 2;
-			btnStyle.BorderColor = canAfford ? BdAccent : TxDisabled;
-			buyBtn.AddThemeStyleboxOverride("normal", btnStyle);
-			buyBtn.AddThemeColorOverride("font_color", canAfford ? TxBright : TxDisabled);
-
-			var hoverStyle = btnStyle.Duplicate() as StyleBoxFlat;
-			hoverStyle.BgColor = canAfford ? new Color(BdAccent, 0.5f) : new Color(TxDisabled, 0.1f);
-			buyBtn.AddThemeStyleboxOverride("hover", hoverStyle);
-
-			buyBtn.Pressed += () => PurchaseSkill(sk, rppCost);
-			_detailContainer.AddChild(buyBtn);
-		}
+		Sep(_detail);
+		BuySection_Skill(sk, owned, unlocked);
 	}
 
-	void ShowSpellDetail(SpellDefinition sp)
+	void ShowSpell(SpellDefinition sp)
 	{
-		ClearChildren(_detailContainer);
-		bool owned = OwnedSpells.Contains(sp.Id);
+		Clear(_detail);
+		bool owned = OwnSp.Contains(sp.Id);
+		bool unlocked = SpellTierUnlocked(sp);
 
-		string icon = ElIcons.GetValueOrDefault(sp.Element, "◇");
-		Lbl(_detailContainer, $"{icon}  {sp.Name}", ElColors.GetValueOrDefault(sp.Element, TxBright), 16, true);
+		string icon = EI.GetValueOrDefault(sp.Element, "◇");
+		L(_detail, $"{icon}  {sp.Name}", EC.GetValueOrDefault(sp.Element, TxBright), 14, true);
 
-		// Tags
-		var tags = new HBoxContainer();
-		tags.AddThemeConstantOverride("separation", 6);
-		_detailContainer.AddChild(tags);
+		var tags = H(_detail, 4);
+		Tag(tags, $"Tier {TR(sp.Tier)}", Gold);
+		Tag(tags, sp.Element.ToString(), EC.GetValueOrDefault(sp.Element, TxDim));
+		Tag(tags, CastS(sp.CastType), TxSec);
 
-		AddTag(tags, $"Tier {TierRoman(sp.Tier)}", ColGold);
-		AddTag(tags, sp.Element.ToString(), ElColors.GetValueOrDefault(sp.Element, TxDim));
-		AddTag(tags, CastTypeShort(sp.CastType), TxSecondary);
+		Sep(_detail);
 
-		AddSep(_detailContainer);
-
-		var descLabel = new Label();
-		descLabel.Text = sp.Description;
-		descLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-		descLabel.AddThemeColorOverride("font_color", TxPrimary);
-		descLabel.AddThemeFontSizeOverride("font_size", 11);
-		_detailContainer.AddChild(descLabel);
+		var desc = new Label();
+		desc.Text = sp.Description;
+		desc.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		desc.AddThemeColorOverride("font_color", Tx);
+		desc.AddThemeFontSizeOverride("font_size", 10);
+		_detail.AddChild(desc);
 
 		if (!string.IsNullOrEmpty(sp.StatusEffect))
-			Lbl(_detailContainer, $"Status: {sp.StatusEffect}", ColRed, 10);
+			L(_detail, $"Status: {sp.StatusEffect}", Red, 9);
 
-		AddSep(_detailContainer);
+		Sep(_detail);
+		L(_detail, "◆ SPELL DATA", TxSec, 9, true);
+		var g = Grid();
+		GRow(g, "Aether Cost", sp.AetherCost.ToString(), Ae);
+		GRow(g, "RT Cost", $"+{sp.RtCost}", Tx);
+		if (sp.Power > 0) GRow(g, "Power", sp.Power.ToString(), TxBright);
+		string rng = sp.RangeMin == sp.RangeMax ? sp.RangeMax.ToString() : $"{sp.RangeMin}-{sp.RangeMax}";
+		GRow(g, "Range", rng, Tx);
+		GRow(g, "Target", sp.Target.ToString(), Tx);
+		if (sp.AreaSize > 0) GRow(g, "Area", $"Diamond({sp.AreaSize})", Tx);
+		GRow(g, "Cast Type", CastS(sp.CastType), TxSec);
+		if (!string.IsNullOrEmpty(sp.StatReq))
+			GRow(g, "Requires", $"{StatFull(sp.StatReq)} {sp.StatReqValue}+", Gold);
+		_detail.AddChild(g);
 
-		Lbl(_detailContainer, "◆ SPELL DATA", TxSecondary, 10, true);
-		var grid = new GridContainer();
-		grid.Columns = 2;
-		grid.AddThemeConstantOverride("h_separation", 16);
-		grid.AddThemeConstantOverride("v_separation", 2);
-		_detailContainer.AddChild(grid);
+		Sep(_detail);
+		BuySection_Spell(sp, owned, unlocked);
+	}
 
-		AddStatRow(grid, "Aether Cost", sp.AetherCost.ToString(), ColAether);
-		AddStatRow(grid, "RT Cost", $"+{sp.RtCost}", TxPrimary);
-		if (sp.Power > 0) AddStatRow(grid, "Power", sp.Power.ToString(), TxBright);
-		string rangeStr = sp.RangeMin == sp.RangeMax ? sp.RangeMax.ToString() : $"{sp.RangeMin}-{sp.RangeMax}";
-		AddStatRow(grid, "Range", rangeStr, TxPrimary);
-		AddStatRow(grid, "Target", sp.Target.ToString(), TxPrimary);
-		if (sp.AreaSize > 0) AddStatRow(grid, "Area", $"Diamond({sp.AreaSize})", TxPrimary);
-		AddStatRow(grid, "Cast Type", CastTypeShort(sp.CastType), TxSecondary);
+	// ─── Buy / Lock UI ──────────────────────────────
 
-		AddSep(_detailContainer);
-
+	void BuySection_Skill(SkillDefinition sk, bool owned, bool unlocked)
+	{
 		if (owned)
 		{
-			var ownedPanel = MakeCardPanel();
-			Lbl(ownedPanel, "✓  LEARNED", ColGreen, 12, true);
-			_detailContainer.AddChild(ownedPanel);
+			var p = Card(); L(p, "✓  LEARNED", Green, 11, true); _detail.AddChild(p);
+			return;
 		}
-		else
+		if (!unlocked)
 		{
-			int rppCost = sp.RppCost;
-			bool canAfford = PlayerRpp >= rppCost;
-
-			var costRow = new HBoxContainer();
-			costRow.AddThemeConstantOverride("separation", 8);
-			_detailContainer.AddChild(costRow);
-			Lbl(costRow, "Cost:", TxSecondary, 11);
-			Lbl(costRow, $"{rppCost} RPP", canAfford ? ColGold : ColRed, 11, true);
-
-			var buyBtn = new Button();
-			buyBtn.Text = canAfford ? $"LEARN  ({rppCost} RPP)" : "INSUFFICIENT RPP";
-			buyBtn.Disabled = !canAfford;
-			buyBtn.CustomMinimumSize = new Vector2(250, 36);
-			buyBtn.AddThemeFontSizeOverride("font_size", 12);
-
-			var btnStyle = new StyleBoxFlat();
-			btnStyle.BgColor = canAfford ? new Color(BdAccent, 0.3f) : new Color(TxDisabled, 0.1f);
-			btnStyle.SetContentMarginAll(8);
-			btnStyle.SetCornerRadiusAll(4);
-			btnStyle.BorderWidthBottom = 2;
-			btnStyle.BorderColor = canAfford ? BdAccent : TxDisabled;
-			buyBtn.AddThemeStyleboxOverride("normal", btnStyle);
-			buyBtn.AddThemeColorOverride("font_color", canAfford ? TxBright : TxDisabled);
-
-			var hoverStyle = btnStyle.Duplicate() as StyleBoxFlat;
-			hoverStyle.BgColor = canAfford ? new Color(BdAccent, 0.5f) : new Color(TxDisabled, 0.1f);
-			buyBtn.AddThemeStyleboxOverride("hover", hoverStyle);
-
-			buyBtn.Pressed += () => PurchaseSpell(sp);
-			_detailContainer.AddChild(buyBtn);
+			L(_detail, "🔒  LOCKED", Red, 11, true);
+			int need = TierGateReq(sk.Tier);
+			int have = CountOwnedInTreeTier(sk.Tree, sk.Tier - 1);
+			L(_detail, $"Requires {need}× Tier {TR(sk.Tier - 1)} skills (have {have})", TxSec, 9);
+			return;
 		}
+		int cost = sk.Tier * 5;
+		bool afford = Rpp >= cost;
+		var cr = H(_detail, 6); L(cr, "Cost:", TxSec, 10); L(cr, $"{cost} RPP", afford ? Gold : Red, 10, true);
+		BuyBtn(afford ? $"LEARN  ({cost} RPP)" : "INSUFFICIENT RPP", afford,
+			() => { if (Lo != null && Lo.LearnSkill(sk.Id, cost)) { _rppVal.Text = Lo.Rpp.ToString(); RebuildList(); ShowSkill(sk); } });
 	}
 
-	// ═══════════════════════════════════════════════════════════════
-	//  PURCHASE — writes to shared CharacterLoadout
-	// ═══════════════════════════════════════════════════════════════
-
-	void PurchaseSkill(SkillDefinition sk, int cost)
+	void BuySection_Spell(SpellDefinition sp, bool owned, bool unlocked)
 	{
-		if (Loadout == null || !Loadout.LearnSkill(sk.Id, cost)) return;
-		_rppLabel.Text = Loadout.Rpp.ToString();
-		GD.Print($"[AbilityShop] Learned skill: {sk.Name} ({sk.Id}) for {cost} RPP");
-		RebuildList();
-		ShowSkillDetail(sk);
+		if (owned)
+		{
+			var p = Card(); L(p, "✓  LEARNED", Green, 11, true); _detail.AddChild(p);
+			return;
+		}
+		if (!unlocked)
+		{
+			L(_detail, "🔒  LOCKED", Red, 11, true);
+			int need = TierGateReq(sp.Tier);
+			int have = CountOwnedInElTier(sp.Element, sp.Tier - 1);
+			L(_detail, $"Requires {need}× Tier {TR(sp.Tier - 1)} spells (have {have})", TxSec, 9);
+			return;
+		}
+		int cost = sp.RppCost;
+		bool afford = Rpp >= cost;
+		var cr = H(_detail, 6); L(cr, "Cost:", TxSec, 10); L(cr, $"{cost} RPP", afford ? Gold : Red, 10, true);
+		BuyBtn(afford ? $"LEARN  ({cost} RPP)" : "INSUFFICIENT RPP", afford,
+			() => { if (Lo != null && Lo.LearnSpell(sp.Id, cost)) { _rppVal.Text = Lo.Rpp.ToString(); RebuildList(); ShowSpell(sp); } });
 	}
 
-	void PurchaseSpell(SpellDefinition sp)
-	{
-		if (Loadout == null || !Loadout.LearnSpell(sp.Id, sp.RppCost)) return;
-		_rppLabel.Text = Loadout.Rpp.ToString();
-		GD.Print($"[AbilityShop] Learned spell: {sp.Name} ({sp.Id}) for {sp.RppCost} RPP");
-		RebuildList();
-		ShowSpellDetail(sp);
-	}
-
-	// ═══════════════════════════════════════════════════════════════
-	//  UI HELPERS
-	// ═══════════════════════════════════════════════════════════════
-
-	Label Lbl(Control parent, string text, Color color, int size, bool bold = false)
-	{
-		var lbl = new Label();
-		lbl.Text = text;
-		lbl.AddThemeColorOverride("font_color", color);
-		lbl.AddThemeFontSizeOverride("font_size", size);
-		if (bold) lbl.LabelSettings = new LabelSettings { FontColor = color, FontSize = size };
-		parent.AddChild(lbl);
-		return lbl;
-	}
-
-	void LblFixed(Control parent, string text, Color color, int size, float width)
-	{
-		var lbl = new Label();
-		lbl.Text = text;
-		lbl.AddThemeColorOverride("font_color", color);
-		lbl.AddThemeFontSizeOverride("font_size", size);
-		lbl.CustomMinimumSize = new Vector2(width, 0);
-		lbl.ClipText = true;
-		lbl.MouseFilter = Control.MouseFilterEnum.Ignore;
-		parent.AddChild(lbl);
-	}
-
-	void AddStatRow(GridContainer grid, string label, string value, Color valColor)
-	{
-		var lbl = new Label(); lbl.Text = label;
-		lbl.AddThemeColorOverride("font_color", TxDim);
-		lbl.AddThemeFontSizeOverride("font_size", 10);
-		grid.AddChild(lbl);
-
-		var val = new Label(); val.Text = value;
-		val.AddThemeColorOverride("font_color", valColor);
-		val.AddThemeFontSizeOverride("font_size", 10);
-		grid.AddChild(val);
-	}
-
-	void AddTag(HBoxContainer parent, string text, Color color)
-	{
-		var panel = new PanelContainer();
-		var style = new StyleBoxFlat();
-		style.BgColor = new Color(color, 0.15f);
-		style.SetContentMarginAll(2);
-		style.ContentMarginLeft = 6; style.ContentMarginRight = 6;
-		style.SetCornerRadiusAll(3);
-		style.BorderWidthLeft = 1; style.BorderColor = new Color(color, 0.4f);
-		panel.AddThemeStyleboxOverride("panel", style);
-
-		var lbl = new Label(); lbl.Text = text;
-		lbl.AddThemeColorOverride("font_color", color);
-		lbl.AddThemeFontSizeOverride("font_size", 9);
-		panel.AddChild(lbl);
-		parent.AddChild(panel);
-	}
-
-	Button MakeSidebarBtn(string text, bool active)
+	void BuyBtn(string text, bool enabled, Action onPress)
 	{
 		var btn = new Button();
 		btn.Text = text;
-		btn.Alignment = HorizontalAlignment.Left;
-		btn.CustomMinimumSize = new Vector2(160, 28);
-		btn.AddThemeFontSizeOverride("font_size", 11);
+		btn.Disabled = !enabled;
+		btn.CustomMinimumSize = new Vector2(0, 32);
+		btn.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		btn.AddThemeFontSizeOverride("font_size", 10);
 
-		var style = new StyleBoxFlat();
-		style.BgColor = active ? BgSelected : Colors.Transparent;
-		style.SetContentMarginAll(4);
-		style.ContentMarginLeft = 10;
-		style.SetCornerRadiusAll(3);
-		if (active) { style.BorderWidthLeft = 2; style.BorderColor = BdAccent; }
-		btn.AddThemeStyleboxOverride("normal", style);
-		btn.AddThemeColorOverride("font_color", active ? TxBright : TxSecondary);
+		var s = new StyleBoxFlat();
+		s.BgColor = enabled ? new Color(BdAccent, 0.3f) : new Color(TxOff, 0.1f);
+		s.SetContentMarginAll(6); s.SetCornerRadiusAll(4);
+		s.BorderWidthBottom = 2; s.BorderColor = enabled ? BdAccent : TxOff;
+		btn.AddThemeStyleboxOverride("normal", s);
+		btn.AddThemeColorOverride("font_color", enabled ? TxBright : TxOff);
 
-		var hover = style.Duplicate() as StyleBoxFlat;
-		hover.BgColor = BgCardHover;
-		btn.AddThemeStyleboxOverride("hover", hover);
-		btn.AddThemeColorOverride("font_hover_color", TxBright);
+		var hv = s.Duplicate() as StyleBoxFlat; hv.BgColor = enabled ? new Color(BdAccent, 0.5f) : s.BgColor;
+		btn.AddThemeStyleboxOverride("hover", hv);
 
-		return btn;
+		if (enabled) btn.Pressed += onPress;
+		_detail.AddChild(btn);
 	}
 
-	HBoxContainer MakeListHeader()
+	// ═══════════════════════════════════════════════════
+	//  PREREQUISITE SYSTEM
+	//  T1 = free, T2 = need 3×T1, T3 = need 2×T2, T4 = need 1×T3
+	// ═══════════════════════════════════════════════════
+
+	static int TierGateReq(int tier) => tier switch { 2 => 3, 3 => 2, 4 => 1, _ => 0 };
+
+	int CountOwnedInTreeTier(SkillTree tree, int tier)
+		=> SkillDatabase.GetTree(tree).Count(s => s.Tier == tier && OwnSk.Contains(s.Id));
+
+	int CountOwnedInElTier(Element el, int tier)
+		=> SpellDatabase.GetElement(el).Count(s => s.Tier == tier && OwnSp.Contains(s.Id));
+
+	bool SkillTierUnlocked(SkillDefinition sk)
 	{
-		var hbox = new HBoxContainer();
-		hbox.AddThemeConstantOverride("separation", 0);
-		hbox.CustomMinimumSize = new Vector2(0, 24);
-		return hbox;
+		if (sk.Tier <= 1) return true;
+		return CountOwnedInTreeTier(sk.Tree, sk.Tier - 1) >= TierGateReq(sk.Tier);
 	}
 
-	void AddListHeaderCell(HBoxContainer header, string text, float width)
+	bool SpellTierUnlocked(SpellDefinition sp)
 	{
-		var lbl = new Label();
-		lbl.Text = text;
-		lbl.CustomMinimumSize = new Vector2(width, 0);
-		lbl.ClipText = true;
-		lbl.AddThemeColorOverride("font_color", TxDim);
-		lbl.AddThemeFontSizeOverride("font_size", 9);
-		header.AddChild(lbl);
+		if (sp.Tier <= 1) return true;
+		return CountOwnedInElTier(sp.Element, sp.Tier - 1) >= TierGateReq(sp.Tier);
 	}
 
-	PanelContainer MakeCardPanel()
+	// ═══════════════════════════════════════════════════
+	//  UI PRIMITIVES
+	// ═══════════════════════════════════════════════════
+
+	Label L(Control p, string t, Color c, int sz, bool bold = false)
 	{
-		var panel = new PanelContainer();
-		var style = new StyleBoxFlat();
-		style.BgColor = BgCard;
-		style.SetContentMarginAll(8);
-		style.SetCornerRadiusAll(4);
-		panel.AddThemeStyleboxOverride("panel", style);
-		return panel;
+		var l = new Label(); l.Text = t;
+		l.AddThemeColorOverride("font_color", c);
+		l.AddThemeFontSizeOverride("font_size", sz);
+		if (bold) l.LabelSettings = new LabelSettings { FontColor = c, FontSize = sz };
+		p?.AddChild(l); return l;
 	}
 
-	void AddSep(Control parent)
+	void F(Control p, string t, Color c, int sz, float w)
 	{
-		var sep = new HSeparator();
-		sep.AddThemeColorOverride("separator", BdSubtle);
-		sep.AddThemeConstantOverride("separation", 6);
-		parent.AddChild(sep);
+		var l = new Label(); l.Text = t;
+		l.AddThemeColorOverride("font_color", c);
+		l.AddThemeFontSizeOverride("font_size", sz);
+		l.CustomMinimumSize = new Vector2(w, 0);
+		l.ClipText = true; l.MouseFilter = MouseFilterEnum.Ignore;
+		p.AddChild(l);
 	}
 
-	void AddVSep(Control parent)
+	HBoxContainer H(Control p, int sep)
 	{
-		var sep = new VSeparator();
-		sep.AddThemeColorOverride("separator", BdSubtle);
-		sep.AddThemeConstantOverride("separation", 0);
-		sep.CustomMinimumSize = new Vector2(1, 0);
-		parent.AddChild(sep);
+		var h = new HBoxContainer(); h.AddThemeConstantOverride("separation", sep);
+		p?.AddChild(h); return h;
 	}
 
-	void ClearChildren(Control c)
+	VBoxContainer V(Control p, int sep)
 	{
-		foreach (var child in c.GetChildren())
-			if (child is Node n) n.QueueFree();
+		var v = new VBoxContainer(); v.AddThemeConstantOverride("separation", sep);
+		p?.AddChild(v); return v;
 	}
 
-	// ═══════════════════════════════════════════════════════════════
+	ScrollContainer Scroll(float minW)
+	{
+		var sc = new ScrollContainer();
+		sc.CustomMinimumSize = new Vector2(minW, 0);
+		sc.SizeFlagsVertical = SizeFlags.ExpandFill;
+		sc.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+		return sc;
+	}
+
+	PanelContainer Row(bool sel)
+	{
+		var r = new PanelContainer();
+		var s = new StyleBoxFlat();
+		s.BgColor = sel ? BgSelected : Colors.Transparent;
+		s.SetContentMarginAll(3); s.ContentMarginLeft = 6;
+		r.AddThemeStyleboxOverride("panel", s);
+		r.CustomMinimumSize = new Vector2(0, 24);
+		r.MouseFilter = MouseFilterEnum.Stop;
+		return r;
+	}
+
+	HBoxContainer HRow()
+	{
+		var h = new HBoxContainer();
+		h.AddThemeConstantOverride("separation", 0);
+		h.CustomMinimumSize = new Vector2(0, 22);
+		return h;
+	}
+
+	void HCell(HBoxContainer h, string t, float w)
+	{
+		var l = new Label(); l.Text = t;
+		l.CustomMinimumSize = new Vector2(w, 0); l.ClipText = true;
+		l.AddThemeColorOverride("font_color", TxDim);
+		l.AddThemeFontSizeOverride("font_size", 8);
+		h.AddChild(l);
+	}
+
+	PanelContainer Card()
+	{
+		var p = new PanelContainer();
+		var s = new StyleBoxFlat();
+		s.BgColor = BgCard; s.SetContentMarginAll(6); s.SetCornerRadiusAll(4);
+		p.AddThemeStyleboxOverride("panel", s); return p;
+	}
+
+	void Tag(HBoxContainer p, string t, Color c)
+	{
+		var pc = new PanelContainer();
+		var s = new StyleBoxFlat();
+		s.BgColor = new Color(c, 0.15f);
+		s.SetContentMarginAll(1); s.ContentMarginLeft = 5; s.ContentMarginRight = 5;
+		s.SetCornerRadiusAll(3); s.BorderWidthLeft = 1; s.BorderColor = new Color(c, 0.4f);
+		pc.AddThemeStyleboxOverride("panel", s);
+		var l = new Label(); l.Text = t;
+		l.AddThemeColorOverride("font_color", c);
+		l.AddThemeFontSizeOverride("font_size", 8);
+		pc.AddChild(l); p.AddChild(pc);
+	}
+
+	GridContainer Grid()
+	{
+		var g = new GridContainer(); g.Columns = 2;
+		g.AddThemeConstantOverride("h_separation", 12);
+		g.AddThemeConstantOverride("v_separation", 1);
+		return g;
+	}
+
+	void GRow(GridContainer g, string lbl, string val, Color vc)
+	{
+		var a = new Label(); a.Text = lbl;
+		a.AddThemeColorOverride("font_color", TxDim);
+		a.AddThemeFontSizeOverride("font_size", 9); g.AddChild(a);
+		var b = new Label(); b.Text = val;
+		b.AddThemeColorOverride("font_color", vc);
+		b.AddThemeFontSizeOverride("font_size", 9); g.AddChild(b);
+	}
+
+	Button SideBtn(string t, bool active)
+	{
+		var b = new Button(); b.Text = t;
+		b.Alignment = HorizontalAlignment.Left;
+		b.CustomMinimumSize = new Vector2(0, 26);
+		b.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		b.AddThemeFontSizeOverride("font_size", 10);
+		var s = new StyleBoxFlat();
+		s.BgColor = active ? BgSelected : Colors.Transparent;
+		s.SetContentMarginAll(3); s.ContentMarginLeft = 8; s.SetCornerRadiusAll(3);
+		if (active) { s.BorderWidthLeft = 2; s.BorderColor = BdAccent; }
+		b.AddThemeStyleboxOverride("normal", s);
+		b.AddThemeColorOverride("font_color", active ? TxBright : TxSec);
+		var hv = s.Duplicate() as StyleBoxFlat; hv.BgColor = BgHover;
+		b.AddThemeStyleboxOverride("hover", hv);
+		b.AddThemeColorOverride("font_hover_color", TxBright);
+		return b;
+	}
+
+	void SideLabel(string t) => L(_sidebar, t, Gold, 10, true);
+
+	void Sep(Control p)
+	{
+		var s = new HSeparator();
+		s.AddThemeColorOverride("separator", BdSubtle);
+		s.AddThemeConstantOverride("separation", 4);
+		p.AddChild(s);
+	}
+
+	void VSep(Control p)
+	{
+		var s = new VSeparator();
+		s.AddThemeColorOverride("separator", BdSubtle);
+		s.AddThemeConstantOverride("separation", 0);
+		s.CustomMinimumSize = new Vector2(1, 0);
+		p.AddChild(s);
+	}
+
+	void Clear(Control c) { foreach (var ch in c.GetChildren()) if (ch is Node n) n.QueueFree(); }
+	bool Click(InputEvent e) => e is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left;
+
+	// ═══════════════════════════════════════════════════
 	//  FORMAT HELPERS
-	// ═══════════════════════════════════════════════════════════════
+	// ═══════════════════════════════════════════════════
 
-	static string TierRoman(int t) => t switch { 1 => "I", 2 => "II", 3 => "III", 4 => "IV", _ => "—" };
+	static string TR(int t) => t switch { 1 => "I", 2 => "II", 3 => "III", 4 => "IV", _ => "—" };
 
-	static string SlotShort(SkillSlotType s) => s switch {
+	static string SlotS(SkillSlotType s) => s switch {
 		SkillSlotType.Active => "Active", SkillSlotType.Passive => "Passive",
 		SkillSlotType.Auto => "Auto", _ => "?" };
 
-	static string CastTypeShort(SpellCastType t) => t switch {
+	static string CastS(SpellCastType t) => t switch {
 		SpellCastType.Missile => "Missile", SpellCastType.Indirect => "Indirect",
 		SpellCastType.Healing => "Heal", SpellCastType.Transfer => "Drain",
 		SpellCastType.Status => "Status", SpellCastType.Utility => "Utility", _ => "?" };
 
-	static string CostStr(SkillDefinition sk)
+	static string CostS(SkillDefinition sk)
 	{
 		if (sk.StaminaCost > 0 && sk.AetherCost > 0) return $"{sk.StaminaCost}/{sk.AetherCost}";
 		if (sk.StaminaCost > 0) return $"{sk.StaminaCost} STA";
@@ -842,20 +796,24 @@ public partial class AbilityShopPanel : WindowPanel
 		return "—";
 	}
 
-	static Color ResourceColor(ResourceType r) => r switch {
-		ResourceType.Stamina => ColStamina, ResourceType.Aether => ColAether,
-		ResourceType.Both => ColBoth, _ => TxDim };
+	static Color ResC(ResourceType r) => r switch {
+		ResourceType.Stamina => Sta, ResourceType.Aether => Ae, ResourceType.Both => Both, _ => TxDim };
 
-	static string WeaponLabel(WeaponReq w) => w switch {
+	static string WpnS(WeaponReq w) => w switch {
 		WeaponReq.AnyMelee => "Any Melee", WeaponReq.AnyRanged => "Any Ranged",
-		WeaponReq.Any => "Any Weapon", WeaponReq.AnyPlusShield => "Any + Shield",
-		WeaponReq.AnyOnehanded => "One-Handed", _ => w.ToString() };
+		WeaponReq.Any => "Any Weapon", _ => w.ToString() };
 
-	static string TreeLabel(SkillTree t) => t switch {
+	static string TreeLbl(SkillTree t) => t switch {
 		SkillTree.Vanguard => "⚔ Vanguard", SkillTree.Marksman => "🏹 Marksman",
 		SkillTree.Evoker => "✦ Evoker", SkillTree.Mender => "✚ Mender",
 		SkillTree.Runeblade => "◈ Runeblade", SkillTree.Bulwark => "🛡 Bulwark",
 		SkillTree.Shadowstep => "🗡 Shadowstep", SkillTree.Dreadnought => "💀 Dreadnought",
 		SkillTree.Warsinger => "🎵 Warsinger", SkillTree.Templar => "✦ Templar",
 		SkillTree.Hexer => "🔮 Hexer", SkillTree.Tactician => "⚙ Tactician", _ => t.ToString() };
+
+	static string GetElStat(Element el) => el switch { Element.Light => "MND", Element.Dark => "ETC", _ => "ETC" };
+
+	static string StatFull(string s) => s switch {
+		"ETC" => "Ether Control", "MND" => "Mind", "STR" => "Strength",
+		"AGI" => "Agility", "VIT" => "Vitality", "DEX" => "Dexterity", _ => s };
 }
