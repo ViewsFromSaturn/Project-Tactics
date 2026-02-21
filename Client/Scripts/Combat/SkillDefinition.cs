@@ -6,9 +6,8 @@ namespace ProjectTactics.Combat;
 //  ENUMS
 // ═══════════════════════════════════════════════════════════════
 
-public enum SkillSlotType { Active, Passive, Auto }
-public enum ResourceType { None, Stamina, Aether, Both }
-public enum Element { None, Fire, Ice, Lightning, Earth, Wind, Water, Light, Dark }
+// SkillSlotType, ResourceType → CombatData.cs
+// Element → ElementSystem.cs
 public enum TargetType { Self, Single, Diamond, Line, Ring, Cross }
 public enum SpellCastType { Missile, Indirect, Healing, Transfer, Status, Utility }
 

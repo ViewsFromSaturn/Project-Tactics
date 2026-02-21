@@ -51,6 +51,7 @@ public partial class OverworldHUD : Control
 		("map",       "res://Assets/Icons/icon_map.png",          "World Map  [M]",          Key.M),
 		("mentor",    "res://Assets/Icons/icon_mentorship.png",  "Mentorship  [N]",        Key.N),
 		("inventory", "res://Assets/Icons/icon_inventory.png",    "Inventory  [I]",          Key.I),
+		("abilities", "res://Assets/Icons/icon_scroll.png",      "Ability Compendium  [B]", Key.B),
 		("settings",  "res://Assets/Icons/icon_settings.png",    "Settings  [Esc]",        Key.Escape),
 	};
 
@@ -418,6 +419,7 @@ public partial class OverworldHUD : Control
 			"chronicle" => new Panels.ChronicleKeeperPanel(),
 			"map"       => new Panels.MapPanel(),
 			"inventory" => new Panels.InventoryPanel(),
+			"abilities" => new Panels.AbilityShopPanel(),
 			"mentor"    => new Panels.MentorPanel(),
 			"settings"       => new Panels.SettingsPanel(),
 			"icprofile"      => new Panels.ICProfilePanel(editMode: true),
