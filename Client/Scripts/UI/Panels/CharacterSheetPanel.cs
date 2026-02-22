@@ -316,6 +316,7 @@ public partial class CharacterSheetPanel : WindowPanel
 
 	private void OnEquipSlotPressed(EquipSlot slot)
 	{
+		if (ProjectTactics.UI.OverworldHUD.Instance?.InCombat == true) return;
 		_selectedEquipSlot = _selectedEquipSlot == slot ? null : slot;
 		_selectedSkillSlotIndex = -1;
 		_selectedSpellSlot = -1;
@@ -350,6 +351,39 @@ public partial class CharacterSheetPanel : WindowPanel
 		ppLabel.VerticalAlignment = VerticalAlignment.Center;
 		ppLabel.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 		portraitPanel.AddChild(ppLabel);
+
+		// ── IC Profile link + Edit button ──
+		var btnRow = new HBoxContainer(); btnRow.AddThemeConstantOverride("separation", 6);
+		col.AddChild(btnRow);
+
+		var profileBtn = new Button { Text = "View IC Profile →" };
+		profileBtn.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+		profileBtn.AddThemeFontSizeOverride("font_size", 9);
+		profileBtn.AddThemeColorOverride("font_color", UITheme.AccentGreen);
+		profileBtn.AddThemeColorOverride("font_hover_color", UITheme.TextBright);
+		var pbStyle = new StyleBoxFlat(); pbStyle.BgColor = Colors.Transparent; pbStyle.SetCornerRadiusAll(3);
+		profileBtn.AddThemeStyleboxOverride("normal", pbStyle);
+		var pbHover = (StyleBoxFlat)pbStyle.Duplicate(); pbHover.BgColor = UITheme.CardHoverBg;
+		profileBtn.AddThemeStyleboxOverride("hover", pbHover);
+		profileBtn.Pressed += () =>
+		{
+			OverworldHUD.Instance?.OpenPanel("icprofile_view");
+		};
+		btnRow.AddChild(profileBtn);
+
+		var editBtn = new Button { Text = "✎ Edit" };
+		editBtn.AddThemeFontSizeOverride("font_size", 9);
+		editBtn.AddThemeColorOverride("font_color", UITheme.TextSecondary);
+		editBtn.AddThemeColorOverride("font_hover_color", UITheme.TextBright);
+		var ebStyle = new StyleBoxFlat(); ebStyle.BgColor = Colors.Transparent; ebStyle.SetCornerRadiusAll(3);
+		editBtn.AddThemeStyleboxOverride("normal", ebStyle);
+		var ebHover = (StyleBoxFlat)ebStyle.Duplicate(); ebHover.BgColor = UITheme.CardHoverBg;
+		editBtn.AddThemeStyleboxOverride("hover", ebHover);
+		editBtn.Pressed += () =>
+		{
+			OverworldHUD.Instance?.OpenPanel("icprofile");
+		};
+		btnRow.AddChild(editBtn);
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -431,60 +465,40 @@ public partial class CharacterSheetPanel : WindowPanel
 			if (_selectedSpellSlot == i) HighlightSlot(btn);
 			grid.AddChild(btn);
 		}
-
-		// Learned spells list (when a slot is selected)
-		if (_selectedSpellSlot >= 0)
-		{
-			col.AddChild(Spacer(2));
-
-			// Show currently equipped spell with unequip option
-			var currentSp = _loadout.EquippedSpells[_selectedSpellSlot];
-			if (currentSp != null)
-			{
-				var currentRow = new HBoxContainer(); currentRow.AddThemeConstantOverride("separation", 4);
-				string elIcon = ElIcons.GetValueOrDefault(currentSp.Element, "◇");
-				currentRow.AddChild(UITheme.CreateDim($"Equipped: {elIcon} {currentSp.Name}", 8));
-				var unequipBtn = MakeSmallButton("✕");
-				unequipBtn.TooltipText = "Unequip";
-				int slotToUnequip = _selectedSpellSlot;
-				unequipBtn.Pressed += () =>
-				{
-					_loadout.EquipSpell(slotToUnequip, null);
-					_selectedSpellSlot = -1;
-				};
-				currentRow.AddChild(unequipBtn);
-				col.AddChild(currentRow);
-			}
-
-			col.AddChild(UITheme.CreateDim("▸ Click to equip (replaces current):", 8));
-			var learned = _loadout.GetLearnedSpells();
-			foreach (var sp in learned)
-			{
-				string elIcon = ElIcons.GetValueOrDefault(sp.Element, "◇");
-				var row = new Button();
-				row.Text = $" {elIcon} {sp.Name}  ({sp.AetherCost} AE)";
-				row.Alignment = HorizontalAlignment.Left;
-				row.AddThemeFontSizeOverride("font_size", 9);
-				row.AddThemeColorOverride("font_color", ElColors.GetValueOrDefault(sp.Element, UITheme.Text));
-				row.CustomMinimumSize = new Vector2(0, 20);
-				StyleFlatButton(row);
-				string sId = sp.Id;
-				row.Pressed += () =>
-				{
-					_loadout.EquipSpell(_selectedSpellSlot, SpellDatabase.Get(sId));
-					_selectedSpellSlot = -1;
-				};
-				col.AddChild(row);
-			}
-		}
 	}
 
 	private void OnSpellSlotPressed(int idx)
 	{
-		_selectedSpellSlot = _selectedSpellSlot == idx ? -1 : idx;
+		if (ProjectTactics.UI.OverworldHUD.Instance?.InCombat == true) return;
+
+		// If clicking same slot, unequip
+		if (_selectedSpellSlot == idx)
+		{
+			_loadout.EquipSpell(idx, null);
+			_selectedSpellSlot = -1;
+			return;
+		}
+
 		_selectedSkillSlotIndex = -1;
+		_selectedSpellSlot = -1;
 		_selectedEquipSlot = null;
-		RebuildAll();
+
+		// Open the loadout picker panel
+		OpenSpellPicker(idx);
+	}
+
+	private void OpenSpellPicker(int idx)
+	{
+		var hud = OverworldHUD.Instance;
+		if (hud == null) return;
+
+		var picker = LoadoutPickerPanel.ForSpell(idx, _loadout, () => RebuildAll());
+		var window = FloatingWindow.Open(hud, picker.PanelTitle, picker, 360, 480);
+		picker.CallDeferred(nameof(WindowPanel.DeferredOpen));
+
+		var viewport = hud.GetViewportRect().Size;
+		window.CallDeferred(nameof(FloatingWindow.SetWindowPosition),
+			new Vector2(viewport.X / 2f - 180f, viewport.Y / 2f - 240f));
 	}
 
 	// ── Skill Slots ──
@@ -510,11 +524,11 @@ public partial class CharacterSheetPanel : WindowPanel
 		}
 
 		// Passive (2) + Auto (1)
-		col.AddChild(UITheme.CreateDim("Passive / Auto", 8));
-		var botGrid = new GridContainer { Columns = 3 };
-		botGrid.AddThemeConstantOverride("h_separation", 3);
-		botGrid.AddThemeConstantOverride("v_separation", 3);
-		col.AddChild(botGrid);
+		col.AddChild(UITheme.CreateDim("Passive", 8));
+		var passGrid = new GridContainer { Columns = 2 };
+		passGrid.AddThemeConstantOverride("h_separation", 3);
+		passGrid.AddThemeConstantOverride("v_separation", 3);
+		col.AddChild(passGrid);
 
 		for (int i = 0; i < 2; i++)
 		{
@@ -525,84 +539,56 @@ public partial class CharacterSheetPanel : WindowPanel
 			int idx = i;
 			btn.Pressed += () => OnSkillSlotPressed(SkillSlotType.Passive, idx);
 			if (_selectedSkillSlotType == SkillSlotType.Passive && _selectedSkillSlotIndex == i) HighlightSlot(btn);
-			botGrid.AddChild(btn);
+			passGrid.AddChild(btn);
 		}
 
+		col.AddChild(Spacer(2));
+		col.AddChild(UITheme.CreateDim("Auto", 8));
+		var autoRow = new HBoxContainer(); autoRow.AddThemeConstantOverride("separation", 3);
+		col.AddChild(autoRow);
 		var autoSk = _loadout.AutoSkill;
 		string autoIcon = autoSk != null ? TreeIcon(autoSk.Tree) : "·";
 		var autoBtn = MakeSlotIcon(autoIcon, "A", autoSk != null);
 		autoBtn.TooltipText = autoSk != null ? $"[Auto] {autoSk.Name}" : "Empty auto slot";
 		autoBtn.Pressed += () => OnSkillSlotPressed(SkillSlotType.Auto, 0);
 		if (_selectedSkillSlotType == SkillSlotType.Auto && _selectedSkillSlotIndex == 0) HighlightSlot(autoBtn);
-		botGrid.AddChild(autoBtn);
-
-		// Learned skills list (when a slot is selected)
-		if (_selectedSkillSlotIndex >= 0)
-		{
-			col.AddChild(Spacer(2));
-
-			// Show currently equipped skill with unequip option
-			SkillDefinition current = _selectedSkillSlotType switch
-			{
-				SkillSlotType.Active => _selectedSkillSlotIndex < 5 ? _loadout.ActiveSkills[_selectedSkillSlotIndex] : null,
-				SkillSlotType.Passive => _selectedSkillSlotIndex < 2 ? _loadout.PassiveSkills[_selectedSkillSlotIndex] : null,
-				SkillSlotType.Auto => _loadout.AutoSkill,
-				_ => null
-			};
-
-			if (current != null)
-			{
-				var currentRow = new HBoxContainer(); currentRow.AddThemeConstantOverride("separation", 4);
-				currentRow.AddChild(UITheme.CreateDim($"Equipped: {current.Name}", 8));
-				var unequipBtn = MakeSmallButton("✕");
-				unequipBtn.TooltipText = "Unequip";
-				unequipBtn.Pressed += () =>
-				{
-					_loadout.EquipSkill(_selectedSkillSlotType, _selectedSkillSlotIndex, null);
-					_selectedSkillSlotIndex = -1;
-				};
-				currentRow.AddChild(unequipBtn);
-				col.AddChild(currentRow);
-			}
-
-			col.AddChild(UITheme.CreateDim("▸ Click to equip (replaces current):", 8));
-			var learned = _loadout.GetLearnedSkills().Where(s => s.Slot == _selectedSkillSlotType).ToList();
-			if (learned.Count == 0)
-			{
-				col.AddChild(UITheme.CreateDim("No learned skills of this type. Visit the Ability Compendium [B].", 8));
-			}
-			foreach (var sk in learned)
-			{
-				var row = new Button();
-				row.Text = $" {TreeIcon(sk.Tree)} {sk.Name}";
-				row.Alignment = HorizontalAlignment.Left;
-				row.AddThemeFontSizeOverride("font_size", 9);
-				row.AddThemeColorOverride("font_color", UITheme.Text);
-				row.CustomMinimumSize = new Vector2(0, 20);
-				StyleFlatButton(row);
-				string sId = sk.Id;
-				row.Pressed += () =>
-				{
-					_loadout.EquipSkill(_selectedSkillSlotType, _selectedSkillSlotIndex, SkillDatabase.Get(sId));
-					_selectedSkillSlotIndex = -1;
-				};
-				col.AddChild(row);
-			}
-		}
+		autoRow.AddChild(autoBtn);
+		if (autoSk != null)
+			autoRow.AddChild(UITheme.CreateDim(autoSk.Name, 8));
 	}
 
 	private void OnSkillSlotPressed(SkillSlotType type, int idx)
 	{
+		if (ProjectTactics.UI.OverworldHUD.Instance?.InCombat == true) return;
+
+		// If clicking same slot, unequip
 		if (_selectedSkillSlotType == type && _selectedSkillSlotIndex == idx)
-			_selectedSkillSlotIndex = -1;
-		else
 		{
-			_selectedSkillSlotType = type;
-			_selectedSkillSlotIndex = idx;
+			_loadout.EquipSkill(type, idx, null);
+			_selectedSkillSlotIndex = -1;
+			return;
 		}
+
+		_selectedSkillSlotIndex = -1;
 		_selectedSpellSlot = -1;
 		_selectedEquipSlot = null;
-		RebuildAll();
+
+		// Open the loadout picker panel
+		OpenSkillPicker(type, idx);
+	}
+
+	private void OpenSkillPicker(SkillSlotType type, int idx)
+	{
+		var hud = OverworldHUD.Instance;
+		if (hud == null) return;
+
+		var picker = LoadoutPickerPanel.ForSkill(type, idx, _loadout, () => RebuildAll());
+		var window = FloatingWindow.Open(hud, picker.PanelTitle, picker, 360, 480);
+		picker.CallDeferred(nameof(WindowPanel.DeferredOpen));
+
+		var viewport = hud.GetViewportRect().Size;
+		window.CallDeferred(nameof(FloatingWindow.SetWindowPosition),
+			new Vector2(viewport.X / 2f - 180f, viewport.Y / 2f - 240f));
 	}
 
 	// ═══════════════════════════════════════════════════════════════

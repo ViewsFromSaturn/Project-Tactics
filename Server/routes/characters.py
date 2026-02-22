@@ -293,10 +293,10 @@ def train_stat(character_id):
     setattr(character, stat_name, current_val + total_gained)
     character.training_points_bank -= total_spent
 
-    # Cap combat pools (don't exceed new max after stat change)
-    character.current_hp = min(character.current_hp, character.max_hp)
-    character.current_stamina = min(character.current_stamina, character.max_stamina)
-    character.current_aether = min(character.current_aether, character.max_aether)
+    # Recalculate and fill pools to new max after stat change
+    character.current_hp = character.max_hp
+    character.current_stamina = character.max_stamina
+    character.current_aether = character.max_aether
 
     db.session.commit()
 

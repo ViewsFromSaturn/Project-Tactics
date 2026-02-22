@@ -8,13 +8,18 @@ public enum ResourceType { None, Stamina, Aether, Both }
 public enum SkillSlotType { Active, Passive, Auto }
 public enum SkillCategory { Physical, Ether, Hybrid, Heal, Buff, Debuff }
 
+/// <summary>What this ability actually DOES — derived from skill/spell data, not just resource type.</summary>
+public enum AbilityIntent { DamageEnemy, HealAlly, BuffSelf, BuffAlly, DebuffEnemy, Utility }
+
 // ─── ABILITY INFO ────────────────────────────────────────
 
 public class AbilityInfo
 {
 	public string Name;
 	public string Icon;
+	public string SourceId;       // Original skill/spell ID for effect registry lookup
 	public SkillCategory Category;
+	public AbilityIntent Intent;   // What the ability actually does
 	public SkillSlotType SlotType;
 	public string Description;
 

@@ -258,6 +258,34 @@ def reset_training(character_id):
     }), 200
 
 
+@admin_bp.route("/account/<account_id>/set-admin", methods=["POST"])
+@require_admin
+def set_admin(account_id):
+    """Promote or demote an account to/from admin. Only admins can do this."""
+    account = Account.query.get(account_id)
+    if not account:
+        return jsonify({"error": "Account not found."}), 404
+
+    # Prevent self-demotion
+    if account.id == g.current_account.id:
+        return jsonify({"error": "Cannot change your own admin status."}), 400
+
+    data = request.get_json()
+    is_admin = data.get("is_admin", False)
+
+    if not isinstance(is_admin, bool):
+        return jsonify({"error": "is_admin must be true or false."}), 400
+
+    account.is_admin = is_admin
+    db.session.commit()
+
+    action = "promoted to admin" if is_admin else "demoted from admin"
+    return jsonify({
+        "message": f"Account '{account.username}' {action}.",
+        "account": account.to_dict(),
+    }), 200
+
+
 @admin_bp.route("/announce", methods=["POST"])
 @require_admin
 def announce():

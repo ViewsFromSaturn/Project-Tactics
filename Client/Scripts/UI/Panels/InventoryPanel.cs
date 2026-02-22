@@ -34,7 +34,11 @@ public partial class InventoryPanel : WindowPanel
 		if (_loadout != null) _loadout.LoadoutChanged -= OnLoadoutChanged;
 	}
 
-	private void OnLoadoutChanged() => CallDeferred(nameof(RebuildContent));
+	private void OnLoadoutChanged()
+	{
+		if (!IsInstanceValid(this)) return;
+		CallDeferred(nameof(RebuildContent));
+	}
 
 	protected override void BuildContent(VBoxContainer content)
 	{
@@ -45,7 +49,7 @@ public partial class InventoryPanel : WindowPanel
 
 	private void RebuildContent()
 	{
-		if (_content == null) return;
+		if (!IsInstanceValid(this) || _content == null) return;
 		foreach (var c in _content.GetChildren()) c.QueueFree();
 
 		if (_loadout == null)

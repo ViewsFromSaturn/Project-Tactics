@@ -250,8 +250,6 @@ public partial class BattleHUD : CanvasLayer
 	void BuildAbilitySubMenu()
 	{
 		_abilityPanel = MakePanel(BgSub, new Color(UITheme.AccentViolet, 0.4f));
-		_abilityPanel.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
-		_abilityPanel.Position = new Vector2(-446, -(ChatHeight + 360));
 		_abilityPanel.CustomMinimumSize = new Vector2(240, 0);
 		_abilityPanel.Visible = false;
 		_root.AddChild(_abilityPanel);
@@ -287,8 +285,6 @@ public partial class BattleHUD : CanvasLayer
 	void BuildItemSubMenu()
 	{
 		_itemPanel = MakePanel(BgSub, new Color(UITheme.AccentViolet, 0.4f));
-		_itemPanel.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
-		_itemPanel.Position = new Vector2(-446, -(ChatHeight + 280));
 		_itemPanel.CustomMinimumSize = new Vector2(240, 0);
 		_itemPanel.Visible = false;
 		_root.AddChild(_itemPanel);
@@ -335,8 +331,6 @@ public partial class BattleHUD : CanvasLayer
 	void BuildTooltip()
 	{
 		_tooltipPanel = MakePanel(BgSub, BdSubtle);
-		_tooltipPanel.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
-		_tooltipPanel.Position = new Vector2(-700, -(ChatHeight + 310));
 		_tooltipPanel.CustomMinimumSize = new Vector2(200, 0);
 		_tooltipPanel.Visible = false;
 		_root.AddChild(_tooltipPanel);
@@ -362,6 +356,21 @@ public partial class BattleHUD : CanvasLayer
 		MakeLabel(vb, $"RT Cost: {ab.RtCost}", TxDark, 11);
 		MakeLabel(vb, $"Cost: {ab.CostString()}", ColEther, 11);
 		_tooltipPanel.Visible = true;
+		// Position tooltip to the left of the ability panel
+		CallDeferred(nameof(DeferredPositionTooltip));
+	}
+
+	void DeferredPositionTooltip()
+	{
+		if (!_abilityPanel.Visible || !_tooltipPanel.Visible) return;
+		var abPos = _abilityPanel.GlobalPosition;
+		var ttSize = _tooltipPanel.Size;
+		float x = abPos.X - ttSize.X - 8f;
+		float y = abPos.Y;
+		var viewport = _root.GetViewportRect().Size;
+		y = Mathf.Clamp(y, 8f, viewport.Y - ttSize.Y - 8f);
+		x = Mathf.Max(8f, x);
+		_tooltipPanel.GlobalPosition = new Vector2(x, y);
 	}
 
 	// ═══════════════════════════════════════════════════════
@@ -467,6 +476,43 @@ public partial class BattleHUD : CanvasLayer
 		nameLbl.AddThemeFontSizeOverride("font_size", 14);
 		nameRow.AddChild(nameLbl);
 		infoVb.AddChild(nameRow);
+
+		// ─── Active Buffs/Debuffs row ───
+		if (unit.Buffs.Count > 0)
+		{
+			var buffFlow = new HFlowContainer();
+			buffFlow.AddThemeConstantOverride("h_separation", 3);
+			buffFlow.AddThemeConstantOverride("v_separation", 1);
+			foreach (var b in unit.Buffs)
+			{
+				string icon;
+				Color col;
+				if (b.Stat == "STATUS")
+				{
+					icon = b.Name switch {
+						"Poison" => "☠", "Bleed" => "🩸", "Stun" => "💫", "Sleep" => "💤",
+						"Fear" => "😱", "Silence" => "🤐", "Blind" => "🙈", "Immobilize" => "⛓",
+						"Charm" => "💕", "Petrify" => "🪨", "Stealth" => "👁", "Condemned" => "💀",
+						"Provoked" => "🎯", _ => "◆"
+					};
+					col = new Color(0.9f, 0.5f, 0.2f);
+				}
+				else if (b.Stat == "SHIELD") { icon = "🛡"; col = new Color(0.3f, 0.7f, 1f); }
+				else if (b.Stat == "REGEN") { icon = "♥"; col = new Color(0.3f, 0.9f, 0.3f); }
+				else if (b.Stat == "ENCHANT") { icon = "✦"; col = new Color(1f, 0.5f, 0.2f); }
+				else if (b.Stat == "DMGREDUCE") { icon = "◈"; col = new Color(0.4f, 0.6f, 1f); }
+				else if (b.Value > 0) { icon = "▲"; col = new Color(0.3f, 0.9f, 0.4f); }
+				else { icon = "▼"; col = new Color(0.9f, 0.3f, 0.3f); }
+
+				var tag = new Label();
+				tag.Text = $"{icon}{b.TurnsLeft}";
+				tag.TooltipText = $"{b.Name} ({b.TurnsLeft} turns)";
+				tag.AddThemeColorOverride("font_color", col);
+				tag.AddThemeFontSizeOverride("font_size", 9);
+				buffFlow.AddChild(tag);
+			}
+			infoVb.AddChild(buffFlow);
+		}
 
 		// ─── Portrait (right side, large) ───
 		var portrait = new PanelContainer();
@@ -870,8 +916,42 @@ public partial class BattleHUD : CanvasLayer
 			var n = new Label(); n.Text = ab.Name; n.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			n.AddThemeColorOverride("font_color", TxPrimary); n.AddThemeFontSizeOverride("font_size", 12);
 			ar.AddChild(n);
-			MakeLabel(ar, new string('◆', Math.Clamp(ab.AetherCost / 15, 1, 3)), ColGold, 10);
+			string costStr = ab.ResourceType switch {
+				ResourceType.Stamina => $"{ab.StaminaCost} STA",
+				ResourceType.Aether => $"{ab.AetherCost} AE",
+				ResourceType.Both => $"{ab.StaminaCost}S+{ab.AetherCost}A",
+				_ => ""
+			};
+			if (!string.IsNullOrEmpty(costStr))
+				MakeLabel(ar, costStr, TxDark, 9);
 			avb.AddChild(ar);
+		}
+
+		// Passive skills
+		if (u.PassiveSkill1 != null || u.PassiveSkill2 != null)
+		{
+			AddSection(avb, "◆ PASSIVES");
+			if (u.PassiveSkill1 != null) MakeLabel(avb, $"  ◇ {u.PassiveSkill1.Name}", TxDim, 11);
+			if (u.PassiveSkill2 != null) MakeLabel(avb, $"  ◇ {u.PassiveSkill2.Name}", TxDim, 11);
+		}
+
+		// Auto skill
+		if (u.AutoSkill != null)
+		{
+			AddSection(avb, "◆ AUTO");
+			MakeLabel(avb, $"  ⚙ {u.AutoSkill.Name}", TxDim, 11);
+		}
+
+		// Active buffs
+		if (u.Buffs.Count > 0)
+		{
+			AddSection(avb, "◆ ACTIVE EFFECTS");
+			foreach (var b in u.Buffs)
+			{
+				var col = b.Value >= 0 ? new Color(0.4f, 0.9f, 0.4f) : new Color(0.9f, 0.4f, 0.4f);
+				if (b.Stat == "STATUS") col = new Color(0.9f, 0.6f, 0.2f);
+				MakeLabel(avb, $"  {b.Name} ({b.TurnsLeft}t)", col, 10);
+			}
 		}
 		AddSection(avb, "◆ WEAPON SKILL");
 		MakeLabel(avb, "⊘ Locked", TxDisabled, 12);
@@ -951,7 +1031,7 @@ public partial class BattleHUD : CanvasLayer
 	//  PUBLIC API
 	// ═══════════════════════════════════════════════════════
 
-	public void ShowCommandMenu(BattleUnit unit)
+	public void ShowCommandMenu(BattleUnit unit, int turnsElapsed = 0)
 	{
 		_activeUnit = unit; _menuOpen = true; _cmdIndex = 0;
 		_cmdPanel.Visible = true;
@@ -960,7 +1040,11 @@ public partial class BattleHUD : CanvasLayer
 		SetEnabled("Ability", !unit.HasActed && (unit.CurrentAether > 0 || unit.CurrentStamina > 0));
 		SetEnabled("Item", !unit.HasActed);
 		SetEnabled("Defend", !unit.HasActed);
-		SetEnabled("Flee", true);
+		bool canFlee = turnsElapsed >= 8;
+		SetEnabled("Flee", canFlee);
+		// Update flee label to show turn requirement (Flee is index 5 in CmdNames)
+		if (_cmdBtns.Count > 5)
+			_cmdBtns[5].Text = canFlee ? "  ↺  Flee" : $"  ↺  Flee ({turnsElapsed}/8)";
 		SetEnabled("End Turn", true);
 		SetEnabled("Status", true);
 		CloseSubMenus(); SelectCmd(0); UpdateUnitInfo(unit);
@@ -1027,6 +1111,8 @@ public partial class BattleHUD : CanvasLayer
 		string cmd = CmdNames[i];
 		_abilityPanel.Visible = cmd == "Ability" && !_cmdBtns[i].Disabled;
 		_itemPanel.Visible = cmd == "Item" && !_cmdBtns[i].Disabled;
+		if (_abilityPanel.Visible) PositionSubMenu(_abilityPanel, i);
+		if (_itemPanel.Visible) PositionSubMenu(_itemPanel, i);
 		_tooltipPanel.Visible = cmd == "Ability" && _abilities.Count > 0 && !_cmdBtns[i].Disabled;
 		if (cmd == "Ability" && _abilities.Count > 0) UpdateTooltip(0);
 	}
@@ -1040,9 +1126,40 @@ public partial class BattleHUD : CanvasLayer
 		if (_cmdBtns[i].Disabled) return;
 		string cmd = CmdNames[i];
 		if (cmd == "Status") { ToggleInspect(true); return; }
-		if (cmd == "Ability") { _subMenuOpen = true; _subIndex = 0; _activeSubType = "Ability"; _abilityPanel.Visible = true; _itemPanel.Visible = false; if (_abilityBtns.Count > 0) SelectSubItem(0); if (_abilities.Count > 0) UpdateTooltip(0); return; }
-		if (cmd == "Item") { _subMenuOpen = true; _subIndex = 0; _activeSubType = "Item"; _itemPanel.Visible = true; _abilityPanel.Visible = false; _tooltipPanel.Visible = false; if (_itemBtns.Count > 0) SelectSubItem(0); return; }
+		if (cmd == "Ability") { _subMenuOpen = true; _subIndex = 0; _activeSubType = "Ability"; _abilityPanel.Visible = true; _itemPanel.Visible = false; PositionSubMenu(_abilityPanel, i); if (_abilityBtns.Count > 0) SelectSubItem(0); if (_abilities.Count > 0) UpdateTooltip(0); return; }
+		if (cmd == "Item") { _subMenuOpen = true; _subIndex = 0; _activeSubType = "Item"; _itemPanel.Visible = true; _abilityPanel.Visible = false; _tooltipPanel.Visible = false; PositionSubMenu(_itemPanel, i); if (_itemBtns.Count > 0) SelectSubItem(0); return; }
 		CloseSubMenus(); EmitSignal(SignalName.CommandSelected, cmd);
+	}
+
+	/// <summary>Position a submenu panel to the left of the command button that opened it, vertically centered.</summary>
+	void PositionSubMenu(PanelContainer subPanel, int cmdIndex)
+	{
+		// Wait one frame for the panel to layout so we get correct size
+		CallDeferred(nameof(DeferredPositionSubMenu), subPanel, cmdIndex);
+	}
+
+	void DeferredPositionSubMenu(PanelContainer subPanel, int cmdIndex)
+	{
+		if (cmdIndex < 0 || cmdIndex >= _cmdBtns.Count) return;
+		var btn = _cmdBtns[cmdIndex];
+
+		// Get button's global position and center Y
+		var btnGlobal = btn.GlobalPosition;
+		var btnSize = btn.Size;
+		float btnCenterY = btnGlobal.Y + btnSize.Y / 2f;
+
+		// Position submenu so its vertical center aligns with the button center
+		// Place it to the left of the command panel with a small gap
+		var subSize = subPanel.Size;
+		float subX = _cmdPanel.GlobalPosition.X - subSize.X - 8f;
+		float subY = btnCenterY - subSize.Y / 2f;
+
+		// Clamp to screen bounds
+		var viewport = _root.GetViewportRect().Size;
+		subY = Mathf.Clamp(subY, 8f, viewport.Y - subSize.Y - 8f);
+		subX = Mathf.Max(8f, subX);
+
+		subPanel.GlobalPosition = new Vector2(subX, subY);
 	}
 
 	void OnAbilityClicked(int i) { if (i >= 0 && i < _abilities.Count && _abilities[i].IsUsable) { CloseSubMenus(); EmitSignal(SignalName.AbilitySelected, i); } }

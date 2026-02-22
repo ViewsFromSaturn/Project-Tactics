@@ -20,6 +20,12 @@ public class BattleStats
 	public int StaminaSpent;
 	public int AetherSpent;
 	public float BattleStartTime;
+	public int DefendCount;
+	public int DamageMitigatedByDefend;
+	public int CounterattackCount;
+	public int ParryCount;
+	public int IronWillProcs;
+	public int HealingDone;
 
 	// Per-unit damage tracking for MVP
 	public readonly Dictionary<string, int> DamageByUnit = new();
@@ -208,6 +214,21 @@ public static class BattleReport
 			stats.AlliesFallen > 0 ? DefeatRed : StatValue);
 		AddDottedRow(leftVbox, "Stamina Spent", stats.StaminaSpent.ToString());
 		AddDottedRow(leftVbox, "Aether Spent", stats.AetherSpent.ToString());
+
+		// Defend and passive/auto stats
+		if (stats.DefendCount > 0)
+			AddDottedRow(leftVbox, "Times Defended", stats.DefendCount.ToString());
+		if (stats.DamageMitigatedByDefend > 0)
+			AddDottedRow(leftVbox, "Damage Mitigated (Defend)", stats.DamageMitigatedByDefend.ToString(), VictoryGreen);
+		if (stats.CounterattackCount > 0)
+			AddDottedRow(leftVbox, "Counterattacks", stats.CounterattackCount.ToString());
+		if (stats.ParryCount > 0)
+			AddDottedRow(leftVbox, "Parries", stats.ParryCount.ToString());
+		if (stats.IronWillProcs > 0)
+			AddDottedRow(leftVbox, "Iron Will Saves", stats.IronWillProcs.ToString(), StatHighlight);
+		if (stats.HealingDone > 0)
+			AddDottedRow(leftVbox, "Healing Done", stats.HealingDone.ToString(), VictoryGreen);
+
 		AddDottedRow(leftVbox, "MVP", stats.GetMvpName(), StatHighlight);
 		AddDottedRow(leftVbox, "Battle Duration", stats.GetBattleDuration(currentTime));
 

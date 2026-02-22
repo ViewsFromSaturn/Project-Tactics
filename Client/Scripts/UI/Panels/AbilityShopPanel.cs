@@ -542,11 +542,11 @@ public partial class AbilityShopPanel : WindowPanel
 			L(_detail, $"Requires {need}× Tier {TR(sk.Tier - 1)} skills (have {have})", TxSec, 9);
 			return;
 		}
-		int cost = sk.Tier * 5;
+		int cost = sk.Tier switch { 1 => 3, 2 => 8, 3 => 15, 4 => 25, _ => 3 };
 		bool afford = Rpp >= cost;
 		var cr = H(_detail, 6); L(cr, "Cost:", TxSec, 10); L(cr, $"{cost} RPP", afford ? Gold : Red, 10, true);
 		BuyBtn(afford ? $"LEARN  ({cost} RPP)" : "INSUFFICIENT RPP", afford,
-			() => { if (Lo != null && Lo.LearnSkill(sk.Id, cost)) { _rppVal.Text = Lo.Rpp.ToString(); RebuildList(); ShowSkill(sk); } });
+			() => LearnSkillFromServer(sk, cost));
 	}
 
 	void BuySection_Spell(SpellDefinition sp, bool owned, bool unlocked)
@@ -568,7 +568,7 @@ public partial class AbilityShopPanel : WindowPanel
 		bool afford = Rpp >= cost;
 		var cr = H(_detail, 6); L(cr, "Cost:", TxSec, 10); L(cr, $"{cost} RPP", afford ? Gold : Red, 10, true);
 		BuyBtn(afford ? $"LEARN  ({cost} RPP)" : "INSUFFICIENT RPP", afford,
-			() => { if (Lo != null && Lo.LearnSpell(sp.Id, cost)) { _rppVal.Text = Lo.Rpp.ToString(); RebuildList(); ShowSpell(sp); } });
+			() => LearnSpellFromServer(sp, cost));
 	}
 
 	void BuyBtn(string text, bool enabled, Action onPress)
@@ -816,4 +816,111 @@ public partial class AbilityShopPanel : WindowPanel
 	static string StatFull(string s) => s switch {
 		"ETC" => "Ether Control", "MND" => "Mind", "STR" => "Strength",
 		"AGI" => "Agility", "VIT" => "Vitality", "DEX" => "Dexterity", _ => s };
+
+	// ═══════════════════════════════════════════════════════════════
+	//  SERVER PERSISTENCE
+	// ═══════════════════════════════════════════════════════════════
+
+	async void LearnSkillFromServer(SkillDefinition sk, int cost)
+	{
+		var api = Networking.ApiClient.Instance;
+		var charId = Core.GameManager.Instance?.ActiveCharacterId;
+		if (api == null || string.IsNullOrEmpty(charId)) { LearnSkillLocal(sk, cost); return; }
+
+		var resp = await api.LearnSkill(charId, sk.Id, sk.Tier, sk.Tree.ToString());
+		if (resp.Success)
+		{
+			// Update local state from server response
+			var json = resp.GetJson();
+			if (json.RootElement.TryGetProperty("rpp", out var rppEl))
+			{
+				Lo.Rpp = rppEl.GetInt32();
+				_rppVal.Text = Lo.Rpp.ToString();
+			}
+			Lo.LearnedSkillIds.Add(sk.Id);
+			GD.Print($"[AbilityShop] Learned skill {sk.Name} from server (-{cost} RPP)");
+		}
+		else
+		{
+			GD.PrintErr($"[AbilityShop] Server learn-skill failed: {resp.Error} {resp.Body}");
+			// Fallback to local
+			LearnSkillLocal(sk, cost);
+		}
+		RebuildList();
+		ShowSkill(sk);
+	}
+
+	void LearnSkillLocal(SkillDefinition sk, int cost)
+	{
+		if (Lo != null && Lo.LearnSkill(sk.Id, cost))
+		{
+			_rppVal.Text = Lo.Rpp.ToString();
+			GD.Print($"[AbilityShop] Learned skill {sk.Name} locally (-{cost} RPP)");
+		}
+	}
+
+	async void LearnSpellFromServer(SpellDefinition sp, int cost)
+	{
+		var api = Networking.ApiClient.Instance;
+		var charId = Core.GameManager.Instance?.ActiveCharacterId;
+		if (api == null || string.IsNullOrEmpty(charId)) { LearnSpellLocal(sp, cost); return; }
+
+		var resp = await api.LearnSpell(charId, sp.Id, sp.Tier, sp.Element.ToString());
+		if (resp.Success)
+		{
+			var json = resp.GetJson();
+			if (json.RootElement.TryGetProperty("rpp", out var rppEl))
+			{
+				Lo.Rpp = rppEl.GetInt32();
+				_rppVal.Text = Lo.Rpp.ToString();
+			}
+			Lo.LearnedSpellIds.Add(sp.Id);
+			GD.Print($"[AbilityShop] Learned spell {sp.Name} from server (-{cost} RPP)");
+		}
+		else
+		{
+			GD.PrintErr($"[AbilityShop] Server learn-spell failed: {resp.Error} {resp.Body}");
+			LearnSpellLocal(sp, cost);
+		}
+		RebuildList();
+		ShowSpell(sp);
+	}
+
+	void LearnSpellLocal(SpellDefinition sp, int cost)
+	{
+		if (Lo != null && Lo.LearnSpell(sp.Id, cost))
+		{
+			_rppVal.Text = Lo.Rpp.ToString();
+			GD.Print($"[AbilityShop] Learned spell {sp.Name} locally (-{cost} RPP)");
+		}
+	}
+
+	/// <summary>Load learned abilities from server into the loadout. Call on character select.</summary>
+	public static async void LoadAbilitiesFromServer(CharacterLoadout loadout)
+	{
+		var api = Networking.ApiClient.Instance;
+		var charId = Core.GameManager.Instance?.ActiveCharacterId;
+		if (api == null || string.IsNullOrEmpty(charId)) return;
+
+		var resp = await api.GetAbilities(charId);
+		if (!resp.Success) { GD.PrintErr($"[AbilityShop] Failed to load abilities: {resp.Body}"); return; }
+
+		var json = resp.GetJson();
+		if (json.RootElement.TryGetProperty("learned_skills", out var skills))
+		{
+			loadout.LearnedSkillIds.Clear();
+			foreach (var s in skills.EnumerateArray())
+				loadout.LearnedSkillIds.Add(s.GetString());
+		}
+		if (json.RootElement.TryGetProperty("learned_spells", out var spells))
+		{
+			loadout.LearnedSpellIds.Clear();
+			foreach (var s in spells.EnumerateArray())
+				loadout.LearnedSpellIds.Add(s.GetString());
+		}
+		if (json.RootElement.TryGetProperty("rpp", out var rppEl))
+			loadout.Rpp = rppEl.GetInt32();
+
+		GD.Print($"[AbilityShop] Loaded {loadout.LearnedSkillIds.Count} skills, {loadout.LearnedSpellIds.Count} spells from server (RPP: {loadout.Rpp})");
+	}
 }

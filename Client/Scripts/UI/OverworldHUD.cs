@@ -31,6 +31,9 @@ public partial class OverworldHUD : Control
 	}
 
 	private Label _nameLabel, _rankLabel, _tpLabel;
+
+	/// <summary>Set true when battle starts, false when it ends. Locks progression panels.</summary>
+	public bool InCombat { get; set; }
 	private TextureRect _hpFill, _staFill, _ethFill;
 	private Label _hpValue, _staValue, _ethValue;
 	private const float BarTrackWidth = 160f;
@@ -422,6 +425,17 @@ public partial class OverworldHUD : Control
 		{
 			existing.CloseWindow();
 			return;
+		}
+
+		// ── COMBAT LOCK: block panels that could affect the fight ──
+		if (InCombat)
+		{
+			var locked = new HashSet<string> { "training", "abilities", "inventory", "mentor", "icprofile" };
+			if (locked.Contains(id))
+			{
+				GD.Print($"[HUD] Panel '{id}' locked during combat.");
+				return;
+			}
 		}
 
 		Panels.WindowPanel panel = id switch

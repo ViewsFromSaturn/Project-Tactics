@@ -550,6 +550,45 @@ public partial class IsoBattleRenderer : Node3D
 		}
 	}
 
+	/// <summary>
+	/// Animate a unit moving tile-by-tile along a path.
+	/// Returns a signal that fires when the animation completes.
+	/// </summary>
+	public bool IsAnimatingMove { get; private set; }
+
+	public async void AnimateMoveAlongPath(BattleUnit unit, List<Vector2I> path, Action onComplete)
+	{
+		if (!_unitNodes.TryGetValue(unit.CharacterId, out var node) || path == null || path.Count == 0)
+		{
+			onComplete?.Invoke();
+			return;
+		}
+
+		IsAnimatingMove = true;
+		float speed = 5.0f; // tiles per second — snappy but visible
+
+		foreach (var step in path)
+		{
+			var tile = _grid.At(step);
+			int h = tile?.Height ?? 0;
+			var target = GridToWorld(step.X, step.Y, h);
+
+			// Use a tween for smooth interpolation
+			var tween = CreateTween();
+			float dist = node.Position.DistanceTo(target);
+			float duration = Mathf.Max(dist / speed, 0.06f); // minimum 60ms per step
+
+			tween.TweenProperty(node, "position", target, duration)
+				.SetTrans(Tween.TransitionType.Sine)
+				.SetEase(Tween.EaseType.InOut);
+
+			await ToSignal(tween, Tween.SignalName.Finished);
+		}
+
+		IsAnimatingMove = false;
+		onComplete?.Invoke();
+	}
+
 	/// <summary>Rebuild HP bar for a unit after taking damage.</summary>
 	public void RefreshUnitHpBar(BattleUnit unit)
 	{
@@ -582,16 +621,24 @@ public partial class IsoBattleRenderer : Node3D
 	}
 
 	/// <summary>Spawn a floating damage number above a unit.</summary>
-	public void SpawnDamageNumber(BattleUnit unit, int damage, bool crit, bool isDodge = false)
+	public void SpawnDamageNumber(BattleUnit unit, int damage, bool crit, bool isDodge = false, bool isHeal = false)
 	{
 		if (!_unitNodes.TryGetValue(unit.CharacterId, out var node)) return;
 
 		var label = new Label3D();
-		label.Text = isDodge ? "MISS" : (crit ? $"{damage}!" : damage.ToString());
-		label.FontSize = crit ? 42 : 32;
+		if (isHeal)
+		{
+			label.Text = $"+{damage}";
+			label.FontSize = 32;
+		}
+		else
+		{
+			label.Text = isDodge ? "MISS" : (crit ? $"{damage}!" : damage.ToString());
+			label.FontSize = crit ? 42 : 32;
+		}
 		label.PixelSize = 0.003f;
 		label.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
-		label.Modulate = isDodge ? new Color("aaaaaa") : crit ? new Color("ff4444") : new Color("ffcc33");
+		label.Modulate = isHeal ? new Color("44ff66") : isDodge ? new Color("aaaaaa") : crit ? new Color("ff4444") : new Color("ffcc33");
 		label.OutlineSize = 8;
 		label.OutlineModulate = new Color("000000cc");
 		label.Position = new Vector3(0, 1.8f, 0);

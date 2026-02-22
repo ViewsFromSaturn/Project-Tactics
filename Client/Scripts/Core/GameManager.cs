@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using ProjectTactics.UI.Panels;
 
 namespace ProjectTactics.Core;
 
@@ -64,8 +65,9 @@ public partial class GameManager : Node
 		data.InitializeCombatState();
 		RaceData.ApplyRacePassives(data);
 
-		// Create fresh loadout (or load from server later)
+		// Create fresh loadout and load learned abilities from server
 		ActiveLoadout = new CharacterLoadout();
+		UI.Panels.AbilityShopPanel.LoadAbilitiesFromServer(ActiveLoadout);
 
 		// Connect real-time socket if not already connected
 		ConnectGameSocket();

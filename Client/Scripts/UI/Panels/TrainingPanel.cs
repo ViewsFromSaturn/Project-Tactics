@@ -274,9 +274,9 @@ public partial class TrainingPanel : WindowPanel
 		var p = Core.GameManager.Instance?.ActiveCharacter;
 		if (p == null) return;
 
-		// Calculate cost for this next point (including already-pending)
+		// Calculate cost using PENDING values for lowest stat
 		int currentVal = GetStatValue(statKey, p) + _pendingPoints.GetValueOrDefault(statKey, 0);
-		int lowest = GetLowestStat(p);
+		int lowest = GetLowestStatWithPending(p);
 		int gap = currentVal - lowest;
 		int cost = gap >= 20 ? 4 : gap >= 10 ? 2 : 1;
 
@@ -289,13 +289,53 @@ public partial class TrainingPanel : WindowPanel
 		if (_statValueLabels.TryGetValue(statKey, out var valLabel))
 			valLabel.Text = (GetStatValue(statKey, p) + _pendingPoints[statKey]).ToString();
 
-		// Update efficiency label for next potential click
-		if (_efficiencyLabels.TryGetValue(statKey, out var effLabel))
-			UpdateEfficiencyLabel(effLabel, currentVal + 1, p);
+		// Refresh ALL efficiency labels — raising one stat can change the gap for others
+		RefreshAllEfficiencyLabels(p);
 
 		_applyBtn.Text = $"Apply Training ({_pendingTpCost} TP)";
 		_applyBtn.Disabled = false;
 		_tpBadge.Text = $"{p.TrainingPointsBank - _pendingTpCost} TP";
+	}
+
+	/// <summary>Refresh every stat's efficiency label using pending values.</summary>
+	private void RefreshAllEfficiencyLabels(Core.PlayerData p)
+	{
+		string[] keys = { "strength", "vitality", "agility", "dexterity", "mind", "ether_control" };
+		int lowest = GetLowestStatWithPending(p);
+		foreach (var key in keys)
+		{
+			if (!_efficiencyLabels.TryGetValue(key, out var effLabel)) continue;
+			int val = GetStatValue(key, p) + _pendingPoints.GetValueOrDefault(key, 0);
+			UpdateEfficiencyLabelFromGap(effLabel, val - lowest);
+		}
+	}
+
+	/// <summary>Update an efficiency label from a pre-calculated gap value.</summary>
+	private void UpdateEfficiencyLabelFromGap(Label label, int gap)
+	{
+		int cost; string effText; Color effColor;
+		if (gap >= 20)
+		{
+			cost = 4;
+			effText = $"  ⚠ 25% eff — costs {cost} TP per point";
+			effColor = UITheme.AccentRuby;
+		}
+		else if (gap >= 10)
+		{
+			cost = 2;
+			effText = $"  ⚠ 50% eff — costs {cost} TP per point";
+			effColor = UITheme.AccentGold;
+		}
+		else
+		{
+			cost = 1;
+			effText = $"  100% eff — costs {cost} TP per point";
+			effColor = UITheme.TextDim;
+		}
+		label.Text = effText;
+		label.AddThemeFontSizeOverride("font_size", 10);
+		label.AddThemeColorOverride("font_color", effColor);
+		if (UITheme.FontBody != null) label.AddThemeFontOverride("font", UITheme.FontBody);
 	}
 
 	// ═════════════════════════════════════════════════════════
@@ -382,6 +422,19 @@ public partial class TrainingPanel : WindowPanel
 		if (p.Dexterity < min) min = p.Dexterity;
 		if (p.Mind < min) min = p.Mind;
 		if (p.EtherControl < min) min = p.EtherControl;
+		return min;
+	}
+
+	/// <summary>Lowest stat including pending (uncommitted) allocations.</summary>
+	private int GetLowestStatWithPending(Core.PlayerData p)
+	{
+		string[] keys = { "strength", "vitality", "agility", "dexterity", "mind", "ether_control" };
+		int min = int.MaxValue;
+		foreach (var k in keys)
+		{
+			int val = GetStatValue(k, p) + _pendingPoints.GetValueOrDefault(k, 0);
+			if (val < min) min = val;
+		}
 		return min;
 	}
 

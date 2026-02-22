@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 
 namespace ProjectTactics.Combat;
 
@@ -31,6 +32,102 @@ public class BattleUnit
 	public bool HasActed;
 	public int TilesMoved;
 	public bool IsDefending;
+
+	// ─── PASSIVE / AUTO SKILLS ────────────────────────────
+	public SkillDefinition PassiveSkill1;
+	public SkillDefinition PassiveSkill2;
+	public SkillDefinition AutoSkill;
+
+	// Passive stat bonuses (applied once at battle start)
+	public float PassiveAtkMod = 1f;      // Strengthen
+	public float PassiveDefMod = 1f;      // Fortify
+	public float PassiveMaxHpMod = 1f;    // Constitution
+	public float PassiveAccMod = 1f;      // Trueflight / Weapon Mastery
+	public float PassiveDmgMod = 1f;      // Weapon Mastery damage
+	public float PassiveEdefMod = 1f;     // Templar Ward
+	public int PassiveRangeBonus = 0;     // Trajectory
+	public float PassiveItemEff = 1f;     // Field Alchemy
+
+	// Auto-trigger chances
+	public float AutoCounterChance = 0f;
+	public float AutoKnockbackChance = 0f;
+	public float AutoParryChance = 0f;
+	public float AutoDeflectChance = 0f;
+	public float AutoSidestepChance = 0f;
+	public float AutoReflectDmg = 0f;
+	public float AutoReflectMagic = 0f;
+	public bool AutoIronWill = false;
+	public bool IronWillUsed = false;
+	public int AutoConserveRt = 0;
+	public bool AutoDreadHarvest = false;
+	public bool AutoStalwartFaith = false;
+
+	// ─── ACTIVE BUFFS / STATUS EFFECTS ────────────────────
+	public List<ActiveBuff> Buffs = new();
+
+	/// <summary>Add a timed buff. Stacks by default; same-source replaces.</summary>
+	public void AddBuff(string name, string stat, float value, int turns, string source = "")
+	{
+		// Replace existing from same source
+		Buffs.RemoveAll(b => b.Source == source && source != "");
+		Buffs.Add(new ActiveBuff { Name = name, Stat = stat, Value = value, TurnsLeft = turns, Source = source });
+	}
+
+	/// <summary>Get total buff modifier for a stat (multiplicative).</summary>
+	public float GetBuffMod(string stat)
+	{
+		float mod = 1f;
+		foreach (var b in Buffs)
+			if (b.Stat == stat) mod += b.Value;
+		return mod;
+	}
+
+	/// <summary>Check if unit has a specific status.</summary>
+	public bool HasStatus(string status)
+	{
+		foreach (var b in Buffs)
+			if (b.Stat == "STATUS" && b.Name == status && b.TurnsLeft > 0) return true;
+		return false;
+	}
+
+	/// <summary>Remove first debuff found.</summary>
+	public bool RemoveOneDebuff()
+	{
+		for (int i = 0; i < Buffs.Count; i++)
+			if (Buffs[i].Value < 0 || Buffs[i].Stat == "STATUS")
+			{ Buffs.RemoveAt(i); return true; }
+		return false;
+	}
+
+	public void RemoveAllDebuffs()
+	{
+		Buffs.RemoveAll(b => b.Value < 0 || b.Stat == "STATUS");
+	}
+
+	/// <summary>Tick all buffs down by 1 turn. Remove expired ones. Returns expired names for logging.</summary>
+	public List<string> TickBuffs()
+	{
+		var expired = new List<string>();
+		for (int i = Buffs.Count - 1; i >= 0; i--)
+		{
+			Buffs[i].TurnsLeft--;
+			if (Buffs[i].TurnsLeft <= 0)
+			{
+				expired.Add(Buffs[i].Name);
+				Buffs.RemoveAt(i);
+			}
+		}
+		return expired;
+	}
+
+	// ─── NEXT-ACTION FLAGS (set by self-buffs, consumed on next attack) ──
+	public bool NextAttackGuaranteedCrit;
+	public bool NextAttackGuaranteedHit;
+	public int NextAttackHitCount = 1;
+	public float NextSpellDmgBonus;
+	public bool NextAttackGuaranteedStatus;
+	public float NextAttackDmgReduction;   // Phalanx/Brace: reduce incoming dmg
+	public int DmgReductionTurns;
 
 	// ─── BASE STATS (from PlayerData) ────────────────────
 	public int Strength, Vitality, Dexterity, Agility, EtherControl, Mind;
@@ -101,6 +198,95 @@ public class BattleUnit
 	}
 
 	public void TickRt(int amount) => CurrentRt = Math.Max(0, CurrentRt - amount);
+
+	// ─── PASSIVE / AUTO APPLICATION ─────────────────────
+
+	/// <summary>Apply all passive skill stat modifiers. Call AFTER creating unit.</summary>
+	public void ApplyPassives()
+	{
+		ApplyOnePassive(PassiveSkill1);
+		ApplyOnePassive(PassiveSkill2);
+		ApplyOneAutoSkill(AutoSkill);
+
+		// Apply modifiers to stats
+		Atk = (int)(Atk * PassiveAtkMod * PassiveDmgMod);
+		Def = (int)(Def * PassiveDefMod);
+		Edef = (int)(Edef * PassiveEdefMod);
+		Acc = (int)(Acc * PassiveAccMod);
+		MaxHp = (int)(MaxHp * PassiveMaxHpMod);
+		CurrentHp = MaxHp; // refresh to new max
+	}
+
+	void ApplyOnePassive(SkillDefinition sk)
+	{
+		if (sk == null) return;
+		// Parse rank from MaxRank (rank 1-4 maps to scaling values)
+		int rank = sk.MaxRank;
+		float pct = rank * 0.05f; // 5%/10%/15%/20% per rank
+
+		switch (sk.Id)
+		{
+			// Vanguard
+			case "VAN_STRENGTHEN":   PassiveAtkMod += pct; break;
+			case "VAN_FORTIFY":      PassiveDefMod += pct; break;
+			case "VAN_CONSTITUTION": PassiveMaxHpMod += pct; break;
+			case "VAN_WEAPON_MASTERY": PassiveAccMod += pct; PassiveDmgMod += pct; break;
+			case "VAN_PINCER_ATTACK": break; // positional — needs flanking system
+			case "VAN_RAMPART_AURA":  break; // zone control — needs movement system hook
+
+			// Marksman
+			case "MRK_TRAJECTORY":   PassiveRangeBonus += 1; break;
+			case "MRK_TRUEFLIGHT":   PassiveAccMod += pct; break;
+			case "MRK_FOCUS_SHOT":   break; // conditional — check HasMoved at attack time
+			case "MRK_HIGH_GROUND":  break; // conditional — check elevation
+			case "MRK_LOBBER":       break; // arc — needs LOS system
+
+			// Mender
+			case "MND_TRIAGE":       break; // heal priority — AI hint
+			case "MND_SOOTHING_AURA":break; // aura — needs proximity check
+			case "MND_SHIELD_OF_FAITH": PassiveEdefMod += pct; break;
+
+			// Bulwark
+			case "BLK_SHIELD_MASTERY":  PassiveDefMod += pct; break;
+			case "BLK_STALWART":        break; // knockback immunity
+
+			// Tactician
+			case "TAC_FIELD_ALCHEMY":   PassiveItemEff += rank * 0.25f; break;
+			case "TAC_EXPLOIT_OPENING": break; // conditional — check status
+			case "TAC_TERRAIN_MASTERY": break; // movement — needs terrain system
+			case "TAC_TREASURE_HUNT":   break; // loot bonus
+			case "TAC_MAX_TP":          break; // out of combat
+
+			// Hexer
+			case "HEX_DARK_PACT":    break; // aether cost reduction
+			case "HEX_MALICE":       break; // debuff duration
+
+			// Templar
+			case "TMP_DIVINE_WARD":  PassiveEdefMod += pct; break;
+			case "TMP_INQUISITORS_EYE": break; // stealth detection
+		}
+	}
+
+	void ApplyOneAutoSkill(SkillDefinition sk)
+	{
+		if (sk == null) return;
+		int rank = sk.MaxRank;
+
+		switch (sk.Id)
+		{
+			case "VAN_COUNTERATTACK": AutoCounterChance = rank switch { 1=>0.15f, 2=>0.25f, 3=>0.35f, _=>0.50f }; break;
+			case "VAN_KNOCKBACK":     AutoKnockbackChance = rank switch { 1=>0.10f, 2=>0.20f, 3=>0.30f, _=>0.40f }; break;
+			case "VAN_IRON_WILL":     AutoIronWill = true; break;
+			case "VAN_PARRY":         AutoParryChance = 0.25f; break;
+			case "VAN_DEFLECT":       AutoDeflectChance = 0.25f; break;
+			case "MRK_SIDESTEP":      AutoSidestepChance = rank switch { 1=>0.10f, 2=>0.20f, 3=>0.30f, _=>0.40f }; break;
+			case "MRK_CONSERVE_RT":   AutoConserveRt = 3; break;
+			case "TAC_REFLECT_DAMAGE": AutoReflectDmg = rank * 0.05f; break;
+			case "TAC_REFLECT_MAGIC":  AutoReflectMagic = rank * 0.05f; break;
+			case "HEX_DREAD_HARVEST":  AutoDreadHarvest = true; break;
+			case "TMP_STALWART_FAITH": AutoStalwartFaith = true; break;
+		}
+	}
 
 	// ─── DERIVED HELPERS ─────────────────────────────────
 	public bool IsAlive         => CurrentHp > 0;
@@ -209,4 +395,15 @@ public static class ActionRt
 	public const int FinishingMove = 50;
 
 	public const int UseItem = 20;
+}
+
+/// <summary>A timed buff or status effect on a unit.</summary>
+public class ActiveBuff
+{
+	public string Name;       // Display name ("ATK +25%", "Poison", etc.)
+	public string Stat;       // What it modifies: "ATK", "DEF", "EDEF", "RT", "STATUS", "SHIELD", "REGEN"
+	public float Value;       // Modifier value (0.25 = +25%, -0.15 = -15%)
+	public int TurnsLeft;     // Remaining turns
+	public string Source;     // Source skill ID (for replacing on recast)
+	public int ShieldHp;      // For SHIELD type: remaining absorb HP
 }

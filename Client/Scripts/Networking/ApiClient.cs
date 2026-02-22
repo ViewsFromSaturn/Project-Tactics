@@ -430,6 +430,30 @@ public partial class ApiClient : Node
 	{
 		return await RequestAsync("GET", "/admin/accounts");
 	}
+
+	// ═════════════════════════════════════════════════════════
+	//  ABILITY / LOADOUT ENDPOINTS
+	// ═════════════════════════════════════════════════════════
+
+	/// <summary>Get all learned skills/spells for a character.</summary>
+	public async Task<ApiResponse> GetAbilities(string characterId)
+	{
+		return await RequestAsync("GET", $"/abilities/{characterId}/abilities");
+	}
+
+	/// <summary>Learn a skill (server validates RPP, tier gates, etc.).</summary>
+	public async Task<ApiResponse> LearnSkill(string characterId, string abilityId, int tier, string tree)
+	{
+		return await RequestAsync("POST", $"/abilities/{characterId}/learn-skill",
+			new { ability_id = abilityId, tier, tree });
+	}
+
+	/// <summary>Learn a spell (server validates RPP, tier gates, etc.).</summary>
+	public async Task<ApiResponse> LearnSpell(string characterId, string abilityId, int tier, string element)
+	{
+		return await RequestAsync("POST", $"/abilities/{characterId}/learn-spell",
+			new { ability_id = abilityId, tier, element });
+	}
 }
 
 // ═════════════════════════════════════════════════════════════

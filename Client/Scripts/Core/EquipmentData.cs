@@ -66,7 +66,15 @@ public class InventoryItem
 	public int MaxStack;
 	public EquipmentItem EquipData;
 
+	// Consumable combat fields
+	public int RtCost;          // RT added when used in battle
+	public string TargetType;   // "Self", "Single", etc.
+	public int HealAmount;      // HP restored (0 if not a heal)
+	public int StaminaRestore;  // STA restored
+	public int AetherRestore;   // AE restored
+
 	public bool IsEquipment => Category == ItemCategory.Equipment && EquipData != null;
+	public bool IsConsumable => Category == ItemCategory.Consumable;
 	public bool IsStackable => MaxStack > 1;
 }
 
